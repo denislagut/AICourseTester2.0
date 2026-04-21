@@ -6,7 +6,11 @@
       "launchUrl": "swagger",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "LOCAL_URL_HTTP": "http://localhost:5173"
+        "CONNECTION_STRING": "Host=localhost;Port=5432;Database=main_db;Username=postgres;Password=postgres",
+        "ADMIN_USERNAME": "Admin",
+        "ADMIN_PASSWORD": "Abc123-",
+        "LISTEN_ON": "0.0.0.0",
+        "HTTP_PORT": "5173"
       },
       "dotnetRunMessages": true,
       "applicationUrl": "http://localhost:5173"
@@ -30,7 +34,10 @@
         "HTTP_PORT": "5173",
         "HTTPS_PORT": "7169",
         "LISTEN_ON": "0.0.0.0",
-        "PUBLIC_URL": "https://127.0.0.1:7169"
+        "PUBLIC_URL": "https://127.0.0.1:7169",
+        "CONNECTION_STRING": "Host=localhost;Port=5432;Database=main_db;Username=postgres;Password=postgres",
+        "ADMIN_USERNAME": "Admin",
+        "ADMIN_PASSWORD": "Abc123-"
       },
       "dotnetRunMessages": true,
       "applicationUrl": "https://localhost:7169;http://localhost:5173"

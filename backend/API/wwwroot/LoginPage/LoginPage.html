@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./LoginPage.css">
+    <link rel="stylesheet" href="/styles/main.css">
+    <title>Login</title>
+</head>
+<body>
+    <main class="main_wrapper">
+        <div class="login-logo">
+            <img class="login-logo__sys-img" src="img/University_logo.webp" alt="University Logo">
+            <span class="login-logo__sys-name">Система проверки знаний алгоритмов по СИИ</span>
+        </div>
+        <form id="form_login" class="login-form">
+            <div class="login-form__input">
+                <label for="id_userLogin">Логин:</label>
+                <input id="id_userLogin" type="text" required>
+            </div>
+            <div class="login-form__input">
+                <label for="id_userPassword">Пароль:</label>
+                <input id="id_userPassword" type="password" required>
+            </div>
+            <div class="login-form__error-message" id="error-message"></div>
+            <button class="login-form__submit-button" type="submit">Вход</button>
+        </form>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.1/dist/js.cookie.min.js"></script>
+    <script src="/scripts/auth.js"></script>
+    <script src="/LoginPage/LoginPage.js"></script>
+    <script src="/scripts/main.js"></script>
+</body>
+</html>

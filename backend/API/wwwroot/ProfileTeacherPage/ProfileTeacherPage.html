@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./ProfileTeacherPage.css">
+    <link rel="stylesheet" href="/styles/main.css">
+    <link rel="stylesheet" href="/styles/headers/AdminHeader.css">
+    <title>Profile-Teacher</title>
+</head>
+<body>
+  <header class="header-wrapper">
+    <div class="profile-logo">
+      <img class="profile-logo__sys-img" src="/img/University_logo.webp" alt="">
+      <span class="profile-logo__sys-name">Система проверки заданий по СИИ</span>
+    </div>
+    <div class="profile-tooltip">
+      <img class="profile-tooltip__img-bell" src="/img/bell.svg" alt="">
+      <img class="profile-tooltip__img-user" src="/img/default-profile.webp" alt="">
+      <div class="profile-tooltip__menu">
+        <div>
+          <a class="profile-tooltip_to-profile-href" href="/ProfileTeacherPage/ProfileTeacherPage.html"> </a>
+          <span class="profile-tooltip_username">Иванов И. И.</span><br>
+          <span class="profile-tooltip_role">Преподаватель</span>
+        </div>
+        <div class="profile-tooltip__dropdown">
+          <button class="profile-tooltip__button-chevron"></button>
+          <div class="profile-tooltip__dropdown-content">
+            <a class="profile-tooltip__dropdown-button button_settings" href="/AdminPage/AdminPage.html"></a>
+            <button id="profile-tooltip__button-logout" class="profile-tooltip__dropdown-button button_logout"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="main-wrapper">
+    <section class="main-wrapper__section-userinfo-tasklist">
+      <div class="userinfo">
+        <img class="userinfo__img-user" src="/img/default-profile.webp" alt>
+        <span class="userinfo__username">Иванов И. И.</span>
+        <!-- <span class="userinfo__user-email">ivanov@example.com</span> -->
+        <span class="userinfo__user-role">Преподаватель</span>
+      </div>
+      <div class="tasklist">
+        <span class="tasklist__header">Задания:</span>
+        <div class="tasklist__content">
+            <button class="tasklist_task-button">min-max алгоритм</button>
+            <button class="tasklist_task-button">Пятнашки A*</button>
+        </div>
+      </div>
+    </section>
+    <section class="main-wrapper__section-given-tasks-table">
+        <span class="given-tasks-table__header">Выданные задания:</span>
+        <div class="given-tasks-table__content">
+            <table class="given-tasks-table__table">
+                <thead>
+                    <tr>
+                        <th>Задание</th>
+                        <th>Студент</th>
+                        <th>Группа</th>
+                        <th>Дата</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.1/dist/js.cookie.min.js"></script>
+  <script src="/scripts/auth.js"></script>
+  <script src="/ProfileTeacherPage/ProfileTeacherPage.js"></script>
+  <script src="/scripts/main.js"></script>
+</body>
+</html>

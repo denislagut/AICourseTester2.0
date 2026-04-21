@@ -1,0 +1,137 @@
+@import url("https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&family=Special+Gothic+Expanded+One&display=swap");
+* {
+    padding: 0;
+    margin: 0;
+    border: 0;
+}
+
+*, *:before, *:after {
+    -moz-box-sizing: border-box;
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+aside, nav, footer, header, section {
+    display: block;
+}
+
+body {
+    line-height: 1;
+    -ms-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+}
+
+    /* main {
+        flex: 1 1 auto;
+    } */
+
+body, html {
+    height: 100%;
+}
+
+input::-ms-clear {
+    display: none;
+}
+
+button {
+    background-color: transparent;
+    cursor: pointer;
+}
+
+button::-moz-focus-inner {
+    padding: 0;
+    border: 0;
+}
+
+a, a:visited {
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: none;
+}
+
+ul li {
+    list-style: none;
+}
+
+img {
+    vertical-align: top;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: inherit;
+    font-size: inherit;
+}
+body {
+    font-family: "Rubik", sans-serif;
+    font-optical-sizing: auto;
+    font-weight: 450;
+    font-style: normal;
+    background: radial-gradient( #EFEFEF 35%, #4A99A3);
+    height: 100vh;
+    /* display: flex; */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.button-generate, .button-edit, .button-delete, .button-solve, .button-view{
+    background-size: contain;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center;
+    cursor: pointer;
+    vertical-align: middle;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+.button-generate{
+    background-image: url("/img/button_generate.png");
+}
+.button-edit{
+    background-image: url("/img/edit-svgrepo-com.svg");
+}
+.button-edit:hover {
+    opacity: 1;
+}
+.button-delete{
+    background-image: url("/img/button_delete.svg");
+    margin-left: 10px;
+}
+.button-delete:hover {
+    opacity: 1;
+}
+.button-solve {
+    background-image: url("/img/button_solve.svg");
+}
+.button-solve:hover{
+    opacity: 1
+}
+.button-view {
+    background-image: url('/img/history.svg');
+    margin-left: 8px;
+}
+.button-view:hover{
+    opacity: 1
+}
+thead {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #EDEDED;
+}
+
+.actions-cell {
+    white-space: nowrap;
+    text-align: center;
+    padding: 5px !important;
+}
+
+.given-tasks-table__table tbody td {
+    padding: 8px 12px;
+    vertical-align: middle;
+}

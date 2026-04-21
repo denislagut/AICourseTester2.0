@@ -13,6 +13,8 @@ namespace AICourseTester.Data
         public DbSet<Group> Groups { get; set; } = null!;
         public DbSet<UserGroups> UserGroups { get; set; } = null!;
 
+        public DbSet<ErrorRecord> ErrorRecords { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -52,6 +54,11 @@ namespace AICourseTester.Data
                 .Ignore(c => c.TwoFactorEnabled)
                 .Ignore(c => c.PhoneNumber)
                 .Ignore(c => c.PhoneNumberConfirmed);
+            modelBuilder.Entity<ErrorRecord>()
+                .HasOne(e => e.AlphaBeta)
+                .WithMany(a => a.Errors)
+                .HasForeignKey(e => e.AlphaBetaId)
+                .OnDelete(DeleteBehavior.Cascade);
 
         }
     }
