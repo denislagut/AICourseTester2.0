@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./TaskSolveAPage.css">
+    <link rel="stylesheet" href="/styles/main.css">
+    <link rel="stylesheet" href="/styles/headers/AdminHeader.css">
+    <title>A* 15-Puzzle Task</title>
+</head>
+<body>
+  <header class="header-wrapper">
+    <div class="profile-logo">
+      <img class="profile-logo__sys-img" src="/img/University_logo.webp" alt="">
+      <span class="profile-logo__sys-name">Система проверки заданий по СИИ</span>
+    </div>
+    <div class="profile-tooltip">
+      <img class="profile-tooltip__img-bell" src="/img/bell.svg" alt="">
+      <img class="profile-tooltip__img-user" src="/img/default-profile.webp" alt="">
+      <div class="profile-tooltip__menu">
+        <div>
+          <a class="profile-tooltip_to-profile-href"></a>
+          <span class="profile-tooltip_username">Иванов И. И.</span><br>
+          <span class="profile-tooltip_role">Преподаватель</span>
+        </div>
+        <div class="profile-tooltip__dropdown">
+          <button class="profile-tooltip__button-chevron"></button>
+          <div class="profile-tooltip__dropdown-content">
+            <a class="profile-tooltip__dropdown-button button_settings" href="/AdminPage/AdminPage.html"></a>
+            <button id="profile-tooltip__button-logout" class="profile-tooltip__dropdown-button button_logout"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="main-wrapper">
+    <section class="main-wrapper__section-tasksolve">
+      <div class="section__info">
+        <div class="section-tasksolve__taskinfo">
+          <span class="section-tasksolve__task-name" id="task-name">Пятнашки A*</span>
+          <span class="section-tasksolve__task-description" id="task-description">Решите задачу пятнашек с использованием алгоритма A*. Раскройте правильные узлы, заполните значения h, f, g.</span>
+          <div id="heuristic-name"></div>
+          <div class="student-info" id="student-info"></div>
+          <div class="training-mode" id="training-mode">Режим тренировки</div>
+        </div>
+        <div class="tasksettings" id="tasksettings" style="display: none;">
+          <span class="tasksettings__header">Настройки задания:</span>
+          <div class="tasksettings__content" id="tasksettings-content">
+            <div class="tasksettings__input-group">
+              <span>Размерность (N):</span>
+              <input type="number" id="dimensions-input" min="2" max="4" value="3">
+              <span>[2 - 4]</span>
+            </div>
+            <div class="tasksettings__input-group">
+              <span>Итерации:</span>
+              <input type="number" id="iterations-input" min="1" max="10" value="3">
+              <span>[1 - 10]</span>
+            </div>
+            <div class="tasksettings__input-group">
+              <span>Эвристика:</span>
+              <select class="tasksettings__input-group-dropdown" id="heuristic-input">
+                <option value="1">Расстояние Хемминга</option>
+                <option value="2">Манхэттенское расстояние</option>
+              </select>
+            </div>
+          </div>
+          <button type="button" class="tasksolve-form__update-button" id="apply-settings" style="display: none;"></button>
+        </div>
+      </div>
+      <form class="section-tasksolve__task-display">
+        <div class="tree-container" id="tree-container">
+          <canvas id="tree-canvas" style="position: absolute; top: 0; left: 0; z-index: 0; pointer-events: none;"></canvas>
+        </div>
+      </form>
+    </section>
+    <div class="section-tasksolve__task-info">
+      <div id="solution-message"></div>
+      <div class="tasksolve-form__submit-button-block">
+        <button type="button" class="tasksolve-form__submit-button" id="submit-solution">Готово</button>
+      </div>
+    </div>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.1/dist/js.cookie.min.js"></script>
+  <script src="/scripts/auth.js"></script>
+  <script src="/TaskSolveAPage/TaskSolveAPage.js"></script>
+  <script src="/scripts/main.js"></script>
+</body>
+</html>

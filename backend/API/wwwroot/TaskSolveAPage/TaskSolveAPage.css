@@ -1,0 +1,238 @@
+@import url('/TaskSolvePage/TaskSolvePage.css');
+
+/* Основные стили */
+.tree-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 20px 0;
+    padding: 20px;
+    border: 1px solid #7F7C7C;
+    border-radius: 10px;
+    background-color: #f8f9fa;
+    position: relative;
+    overflow-x: auto;
+    overflow-y: visible;
+    min-height: 400px;
+    min-width: 100%;
+    width: max-content;
+    position: relative;
+}
+
+.heuristic-input.success {
+    border-color: green;
+    background-color: #e0ffe0;
+}
+
+.heuristic-input.error {
+    border-color: red;
+    background-color: #ffe0e0;
+}
+
+.tree-node.correct-node {
+    border: 2px solid green;
+    background-color: #e0ffe0;
+}
+
+.tree-node.error-node {
+    border: 2px solid red;
+    background-color: #ffe0e0;
+}
+
+.tree-level {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 30px;
+    margin: 20px 0;
+    min-height: 220px;
+    width: auto; /* Убираем фиксированную ширину для адаптации */
+}
+
+.tree-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    border: 1px solid #808080;
+    border-radius: 8px;
+    background-color: #fff;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+    min-width: 200px;
+    z-index: 1;
+}
+
+.tree-node:hover {
+    background-color: #e9ecef;
+}
+
+.node-id {
+    font-weight: bold;
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.puzzle-board {
+    display: grid;
+    gap: 2px;
+    background-color: #808080;
+    padding: 2px;
+    margin-bottom: 10px;
+}
+.level-1 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #4CAF50;
+}
+.level-2 .tree-node::after {
+    display: none;
+    content: 'MAX';
+    background: #ff9800;
+}
+.level-3 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #9c27b0;
+}
+.level-4 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #9c27b0;
+}
+.level-5 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #9c27b0;
+}
+.level-6 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #9c27b0;
+}
+.level-7 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #9c27b0;
+}
+.level-8 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #9c27b0;
+}
+.level-9 .tree-node::after {
+    display: none;
+    content: 'MIN';
+    background: #9c27b0;
+}
+#heuristic-name {
+    font-size: clamp(16px, 3vw, 20px);
+    font-weight: 500;
+}
+.tasksettings__input-group-dropdown{
+    font-size: clamp(16px, 4vw, 24px);
+}
+.puzzle-tile {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+.puzzle-tile.empty {
+    background-color: #d3d3d3;
+}
+
+.heuristic-inputs {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.input-group label {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.heuristic-input {
+    width: 70px;
+    padding: 8px;
+    border: 1px solid #808080;
+    border-radius: 4px;
+    font-size: 16px;
+    text-align: center;
+}
+
+.heuristic-input.error {
+    border-color: #ff0000;
+    background-color: #ffebee;
+}
+
+.children-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 30px;
+    width: auto;
+    position: relative;
+}
+
+/* Медиа-запросы для адаптивности */
+@media (max-width: 768px) {
+    .tree-node {
+        min-width: 180px;
+    }
+
+    .puzzle-board {
+        transform: none;
+    }
+
+    .tree-level, .children-container {
+        gap: 20px;
+    }
+
+    .heuristic-input {
+        width: 60px;
+        padding: 6px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .tree-node {
+        min-width: 150px;
+    }
+
+    .puzzle-board {
+        transform: none;
+    }
+
+    .heuristic-input {
+        width: 50px;
+        padding: 5px;
+        font-size: 12px;
+    }
+
+    .tree-level, .children-container {
+        gap: 15px;
+    }
+}
+
+/* Дополнительные стили для отображения имени студента */
+#student-info {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+}

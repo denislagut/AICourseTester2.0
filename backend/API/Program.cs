@@ -1,10 +1,12 @@
 using AICourseTester.Data;
 using AICourseTester.Models;
 using AICourseTester.Services;
+using AICourseTester.Services.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using SixLabors.ImageSharp.Web.DependencyInjection;
 using System.Resources;
 using System.Threading.RateLimiting;
@@ -44,7 +46,39 @@ builder.Services.AddControllers();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+	options.SwaggerDoc("v1", new OpenApiInfo
+	{
+		Title = "AICourseTester API",
+		Version = "v1"
+	});
+
+	options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+	{
+		Name = "Authorization",
+		Type = SecuritySchemeType.Http,
+		Scheme = "bearer",
+		BearerFormat = "JWT",
+		In = ParameterLocation.Header,
+		Description = "¬ведите токен в формате: Bearer {token}"
+	});
+
+	options.AddSecurityRequirement(new OpenApiSecurityRequirement
+	{
+		{
+			new OpenApiSecurityScheme
+			{
+				Reference = new OpenApiReference
+				{
+					Type = ReferenceType.SecurityScheme,
+					Id = "Bearer"
+				}
+			},
+			new string[] {}
+		}
+	});
+});
 
 
 string connString = Environment.GetEnvironmentVariable("CONNECTION_STRING") ?? builder.Configuration.GetConnectionString("main_db");
@@ -114,6 +148,8 @@ builder.Services.AddRateLimiter(options =>
     );
 });
 
+builder.Services.AddScoped<IAlphaBetaErrorAnalysisService, AlphaBetaErrorAnalysisService>();
+
 var app = builder.Build();
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -153,13 +189,14 @@ using (var scope = app.Services.CreateScope())
     }
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    foreach (var role in new string[] { "Administrator" })
+    foreach (var role in new string[] { "Administrator", "Student" })
     {
         if (!await roleManager.RoleExistsAsync(role))
         {
             await roleManager.CreateAsync(new IdentityRole(role));
         }
     }
+
 
 
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
@@ -174,25 +211,41 @@ using (var scope = app.Services.CreateScope())
     }
 
     ApplicationUser? user = await userManager.FindByNameAsync(userName);
-    if (user != null)
-    {
-        if (!await userManager.CheckPasswordAsync(user, password))
-        {
-            string resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
-            var result = await userManager.ResetPasswordAsync(user, resetToken, password);
-            if (!result.Succeeded)
-            {
-                throw new Exception(string.Join("\n", result.Errors));
-            }
-        }
-    }
-    else
-    {       
-        user = new ApplicationUser();
-        await userStore.SetUserNameAsync(user, userName, CancellationToken.None);
-        await userManager.CreateAsync(user, password);
-        await userManager.AddToRoleAsync(user, "Administrator");
-    }
+	if (user != null)
+	{
+		if (!await userManager.CheckPasswordAsync(user, password))
+		{
+			string resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
+			var result = await userManager.ResetPasswordAsync(user, resetToken, password);
+			if (!result.Succeeded)
+			{
+				throw new Exception(string.Join("\n", result.Errors));
+			}
+		}
+
+		if (!await userManager.IsInRoleAsync(user, "Administrator"))
+		{
+			await userManager.AddToRoleAsync(user, "Administrator");
+		}
+	}
+	else
+	{
+		user = new ApplicationUser();
+		await userStore.SetUserNameAsync(user, userName, CancellationToken.None);
+
+		var createResult = await userManager.CreateAsync(user, password);
+		if (!createResult.Succeeded)
+		{
+			throw new Exception(string.Join("\n", createResult.Errors.Select(e => e.Description)));
+		}
+
+		var roleResult = await userManager.AddToRoleAsync(user, "Administrator");
+		if (!roleResult.Succeeded)
+		{
+			throw new Exception(string.Join("\n", roleResult.Errors.Select(e => e.Description)));
+		}
+	}
+
 }
 
 var url = Environment.GetEnvironmentVariable("LISTEN_ON");
@@ -215,4 +268,5 @@ if (url != null)
         }
     }
 }
+app.MapFallbackToFile("index.html");
 app.Run();

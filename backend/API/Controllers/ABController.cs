@@ -8,6 +8,8 @@ using AICourseTester.Models;
 using AICourseTester.Services;
 using Microsoft.AspNetCore.RateLimiting;
 using AICourseTester.DTO;
+using AICourseTester.Services.Interfaces;
+using AICourseTester.Models.Analysis;
 
 namespace AICourseTester.Controllers
 {
@@ -20,14 +22,61 @@ namespace AICourseTester.Controllers
         private readonly MainDbContext _context;
         private readonly UsersService _usersService;
 
-        public ABController(MainDbContext context, UserManager<ApplicationUser> userManager, UsersService usersService)
-        {
-            _userManager = userManager;
-            _context = context;
-            _usersService = usersService;
-        }
+		private readonly IAlphaBetaErrorAnalysisService _errorAnalysisService;
 
-        [HttpGet("Train")]
+		private async Task SaveAnalysisErrorsAsync(int alphaBetaId, ErrorAnalysisResult analysisResult)
+		{
+			var oldErrors = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == alphaBetaId)
+				.ToListAsync();
+
+			if (oldErrors.Count > 0)
+			{
+				_context.ErrorRecords.RemoveRange(oldErrors);
+			}
+
+			if (analysisResult.Errors.Count == 0)
+			{
+				return;
+			}
+
+			var errorEntities = analysisResult.Errors.Select(error => new ErrorRecord
+			{
+				AlphaBetaId = alphaBetaId,
+				Code = error.Code,
+				Message = error.Message,
+				NodeId = error.NodeId,
+				TreeLevel = error.TreeLevel,
+				ElementType = error.ElementType,
+				ExpectedA = error.ExpectedA,
+				ActualA = error.ActualA,
+				ExpectedB = error.ExpectedB,
+				ActualB = error.ActualB,
+				PathStepIndex = error.PathStepIndex,
+				ExpectedPathNodeId = error.ExpectedPathNodeId,
+				ActualPathNodeId = error.ActualPathNodeId,
+				IsPrimary = error.IsPrimary,
+				SeverityScore = error.SeverityScore,
+				GroupKey = error.GroupKey,
+				CreatedAt = DateTime.UtcNow
+			}).ToList();
+
+			await _context.ErrorRecords.AddRangeAsync(errorEntities);
+		}
+
+		public ABController(
+	    MainDbContext context,
+	    UserManager<ApplicationUser> userManager,
+	    UsersService usersService,
+	    IAlphaBetaErrorAnalysisService errorAnalysisService)
+		{
+			_userManager = userManager;
+			_context = context;
+			_usersService = usersService;
+			_errorAnalysisService = errorAnalysisService;
+		}
+
+		[HttpGet("Train")]
         public ActionResult<ProblemTree<ABNode>> GetABTrain(int depth = 3, int max = 15, int template = 1)
         {
             if (max < 4 || template < 1 || template > 4)
@@ -82,60 +131,149 @@ namespace AICourseTester.Controllers
             };
         }
 
-        [Authorize, HttpPost("Test")]
-        public async Task<ActionResult<AlphaBetaSolutionDTO>> PostABTestVerify(AlphaBetaSolutionDTO userSolution)
-        {
-            var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
-            if (ab == null)
-            {
-                return NotFound();
-            }
-            if (ab.IsSolved)
-            {
-                return new AlphaBetaSolutionDTO() 
-                { 
-                    Nodes = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
-                    Path = ab.Path == null ? null : ab.Path.FromJson<int[]>()
-                };
-            }
-            ab.UserSolution = userSolution.Nodes.ToJson();
-            ab.UserPath = userSolution.Path.ToJson();
-            var problem = ab.Problem.FromJson<ProblemTree<ABNode>>();
-            var solution = AlphaBetaService.Search(problem);
-            ab.Solution = solution.Nodes.ToJson();
-            ab.Path = solution.Path.ToJson();
-            ab.IsSolved = true;
+		[Authorize, HttpPost("Test")]
+		public async Task<ActionResult<AlphaBetaSolutionDTO>> PostABTestVerify(AlphaBetaSolutionDTO userSolution)
+		{
+			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			if (ab == null)
+			{
+				return NotFound();
+			}
 
-            _context.AlphaBeta.Update(ab);
-            await _context.SaveChangesAsync();
-            return solution;
-        }
-        private async Task<bool> _assignTask(string userId, int treeHeight, int maxValue, int template)
-        {
-            if ((await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)) == null)
-            {
-                return false;
-            }
-            var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
-            if (ab == null)
-            {
-                _context.AlphaBeta.Add(new AlphaBeta() { UserId = userId });
-                await _context.SaveChangesAsync();
-                ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
-            }
-            ab.TreeHeight = treeHeight;
-            ab.UserSolution = null;
-            ab.Solution = null;
-            ab.IsSolved = false;
-            ab.Date = DateTime.Now;
-            ab.Template = template;
-            ab.MaxValue = maxValue;
+			if (ab.IsSolved)
+			{
+				return new AlphaBetaSolutionDTO()
+				{
+					Nodes = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
+					Path = ab.Path == null ? null : ab.Path.FromJson<int[]>()
+				};
+			}
 
-            _context.AlphaBeta.Update(ab);
-            return true;
-        }
+			ab.UserSolution = userSolution.Nodes.ToJson();
+			ab.UserPath = userSolution.Path.ToJson();
 
-        [DisableRateLimiting]
+			var problem = ab.Problem.FromJson<ProblemTree<ABNode>>();
+			var solution = AlphaBetaService.Search(problem);
+
+			ab.Solution = solution.Nodes.ToJson();
+			ab.Path = solution.Path.ToJson();
+			ab.IsSolved = true;
+
+			var analysisResult = _errorAnalysisService.Analyze(problem, userSolution, solution);
+
+			await SaveAnalysisErrorsAsync(ab.Id, analysisResult);
+
+			_context.AlphaBeta.Update(ab);
+			await _context.SaveChangesAsync();
+
+			return solution;
+		}
+
+		[Authorize, HttpPost("Test/Analyze")]
+		public async Task<ActionResult<ErrorAnalysisResult>> AnalyzeABTest(AlphaBetaSolutionDTO userSolution)
+		{
+			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			if (ab.Problem == null)
+			{
+				return BadRequest("Задача не была сгенерирована.");
+			}
+
+			var problem = ab.Problem.FromJson<ProblemTree<ABNode>>();
+			var solution = AlphaBetaService.Search(problem);
+
+			var analysisResult = _errorAnalysisService.Analyze(problem, userSolution, solution);
+
+			return Ok(analysisResult);
+		}
+
+		[Authorize, HttpGet("Test/Errors")]
+		public async Task<ActionResult<List<ErrorRecord>>> GetABTestErrors()
+		{
+			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			var errors = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == ab.Id)
+				.OrderBy(e => e.Id)
+				.ToListAsync();
+
+			return Ok(errors);
+		}
+
+		[AllowAnonymous]
+		[HttpGet("Debug/AuthHeader")]
+		public ActionResult<object> DebugAuthHeader()
+		{
+			var authHeader = Request.Headers.Authorization.ToString();
+
+			return Ok(new
+			{
+				AuthorizationHeader = authHeader,
+				IsAuthenticated = User.Identity?.IsAuthenticated ?? false,
+				Name = User.Identity?.Name
+			});
+		}
+
+		[Authorize]
+		[HttpGet("Debug/Me")]
+		public ActionResult<object> DebugMe()
+		{
+			return Ok(new
+			{
+				IsAuthenticated = User.Identity?.IsAuthenticated ?? false,
+				Name = User.Identity?.Name,
+				Claims = User.Claims.Select(c => new { c.Type, c.Value }).ToList()
+			});
+		}
+
+		private async Task<bool> _assignTask(string userId, int treeHeight, int maxValue, int template)
+		{
+			if ((await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)) == null)
+			{
+				return false;
+			}
+
+			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
+			if (ab == null)
+			{
+				_context.AlphaBeta.Add(new AlphaBeta() { UserId = userId });
+				await _context.SaveChangesAsync();
+				ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
+			}
+
+			var oldErrors = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == ab.Id)
+				.ToListAsync();
+
+			if (oldErrors.Count > 0)
+			{
+				_context.ErrorRecords.RemoveRange(oldErrors);
+			}
+
+			ab.TreeHeight = treeHeight;
+			ab.UserSolution = null;
+			ab.UserPath = null;
+			ab.Solution = null;
+			ab.Path = null;
+			ab.Problem = null;
+			ab.IsSolved = false;
+			ab.Date = DateTime.Now;
+			ab.Template = template;
+			ab.MaxValue = maxValue;
+
+			_context.AlphaBeta.Update(ab);
+			return true;
+		}
+
+		[DisableRateLimiting]
         [Authorize(Roles = "Administrator"), HttpPost("Users/Assign")]
         public async Task<ActionResult> PostFPTestAssign(string[] userIds, int treeHeight, int max = 15, int template = 1)
         {
@@ -238,25 +376,40 @@ namespace AICourseTester.Controllers
                     return NotFound();
                 }
             }
-            if (height != null)
-            {
-                ab.TreeHeight = (int)height;
-            }
-            ab.Problem = null;
-            ab.Solution = null;
-            ab.IsSolved = false;
-            ab.Date = DateTime.Now;
-            ab.MaxValue = maxValue;
-            ab.Template = template;
-            if (generate == true)
-            {
-                var tree = AlphaBetaService.GenerateTree3((int)ab.MaxValue, (int)ab.Template);
-                ab.Problem = tree.ToJson();
-            }
-            _context.AlphaBeta.Update(ab);
-            await _context.SaveChangesAsync();
-            return Ok();
-        }
+			if (height != null)
+			{
+				ab.TreeHeight = (int)height;
+			}
+
+			ab.Problem = null;
+			ab.Solution = null;
+			ab.UserSolution = null;
+			ab.UserPath = null;
+			ab.Path = null;
+			ab.IsSolved = false;
+			ab.Date = DateTime.Now;
+			ab.MaxValue = maxValue;
+			ab.Template = template;
+
+			var oldErrors = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == ab.Id)
+				.ToListAsync();
+
+			if (oldErrors.Count > 0)
+			{
+				_context.ErrorRecords.RemoveRange(oldErrors);
+			}
+
+			if (generate == true)
+			{
+				var tree = AlphaBetaService.GenerateTree3((int)ab.MaxValue, (int)ab.Template);
+				ab.Problem = tree.ToJson();
+			}
+
+			_context.AlphaBeta.Update(ab);
+			await _context.SaveChangesAsync();
+			return Ok();
+		}
 
         [DisableRateLimiting]
         [Authorize(Roles = "Administrator"), HttpDelete("Users/{userId}")]

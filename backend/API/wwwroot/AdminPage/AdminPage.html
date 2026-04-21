@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./AdminPage.css">
+    <link rel="stylesheet" href="/styles/main.css">
+    <link rel="stylesheet" href="/styles/headers/AdminHeader.css">
+    <title>Profile-Teacher</title>
+</head>
+<body>
+  <header class="header-wrapper">
+    <div class="profile-logo">
+      <img class="profile-logo__sys-img" src="/img/University_logo.webp" alt="">
+      <span class="profile-logo__sys-name">Система проверки заданий по СИИ</span>
+    </div>
+    <div class="profile-tooltip">
+      <img class="profile-tooltip__img-bell" src="/img/bell.svg" alt="">
+      <img class="profile-tooltip__img-user" src="/img/default-profile.webp" alt="">
+      <div class="profile-tooltip__menu">
+        <div>
+          <a class="profile-tooltip_to-profile-href" href="/ProfileTeacherPage/ProfileTeacherPage.html"> </a>
+          <span class="profile-tooltip_username">Иванов И. И.</span><br>
+          <span class="profile-tooltip_role">Преподаватель</span>
+        </div>
+        <div class="profile-tooltip__dropdown">
+          <button class="profile-tooltip__button-chevron"></button>
+          <div class="profile-tooltip__dropdown-content">
+            <a class="profile-tooltip__dropdown-button button_settings" href="/AdminPage/AdminPage.html"></a>
+            <button id="profile-tooltip__button-logout" class="profile-tooltip__dropdown-button button_logout"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="main-wrapper">
+    <section class="main-wrapper__section-admin-edit">
+      <form id="form_register" class="admin__form-edit">
+        <div class="admin__tabs">
+          <div class="tabs__tab">
+              <input type="radio" id="student-tab" name="tab-group" checked>
+              <label for="student-tab" class="tabs__title">Студент</label> 
+              <section id="id_form_register_user" class="tabs__content">
+                <div class="tabs__input-sections">
+                  <div class="tabs__input tabs__input-group">              
+                    <span class="tabs__input-span">Группа:</span>
+                    <input id="id_groupName-of-user" type="text">
+                    <button class="profile-tooltip__button-chevron"></button>
+                    <button class="profile-tooltip__button-add-group"></button>
+                    <button class="profile-tooltip__button-delete-group"></button>
+                  </div>
+                  <div class="tabs__input">
+                    <span class="tabs__input-span">ФИО:</span>
+                    <input id="id_userFullName" type="text">
+                  </div>
+                </div>
+                <div class="tabs__input-sections">
+                  <div class="tabs__input tabs__input-login">              
+                    <span class="tabs__input-span">Логин:</span>
+                    <input id="id_userName" type="text">
+                  </div>
+                  <div class="tabs__input tabs__input-password">
+                    <span class="tabs__input-span">Пароль:</span>
+                    <input id="id_userPassword" type="text">
+                    <button id="id_button_generate_login_password" class="form-register__button-generate"></button>
+                  </div>
+                  <div class="tabs__input tabs__input-userId">              
+                    <input id="id_userId" type="text">
+                  </div>
+                  <div class="tabs__input tabs__input-groupId">              
+                    <input id="id_groupId" type="text">
+                  </div>
+                </div>
+              </section>
+          </div>
+        </div>
+      </form>
+      <button 
+        id="id_button_admin_save"
+        class="admin-form__submit-button"
+        type="submit"
+        form="form_register"
+      >Сохранить</button>
+    </section>
+    <section class="main-wrapper__section-admin-list">
+        <div class="section-admin-list__content">
+            <table id="admin-users-table" class="section-admin-list__table">
+                <thead>
+                    <tr>
+                        <th> 
+                          <input class="section-admin-list__checkbox" type="checkbox" name="" id="">
+                          <span class="section-admin-list__group-name">Группа</span>
+                          <button class="profile-tooltip__button-chevron"></button>
+                        </th>
+                        <th>Студент</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                  <td> 
+                    <button id="id_admin-list__button-edit" class="admin-list__button-edit" data-id="${row.id}"></button> 
+                    <button id="id_admin-list__button-delete" class="admin-list__button-delete" data-id="${row.id}"></button>
+                  </td>
+                </tbody>
+            </table>
+        </div>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.1/dist/js.cookie.min.js"></script>
+  <script src="/scripts/auth.js"></script>
+  <script src="/AdminPage/AdminPage.js"></script>
+  <script src="/scripts/main.js" ></script>
+</body>
+</html>
