@@ -3,6 +3,7 @@ using System;
 using AICourseTester.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AICourseTester.Migrations
 {
     [DbContext(typeof(MainDbContext))]
-    partial class MainDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260422143918_AddErrorClassification")]
+    partial class AddErrorClassification
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -182,16 +185,7 @@ namespace AICourseTester.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<bool>("IsExpectedPruned")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsOnCorrectPath")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsUserPruned")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Message")
@@ -203,9 +197,6 @@ namespace AICourseTester.Migrations
                         .HasColumnType("integer");
 
                     b.Property<int?>("PathStepIndex")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("RootBranchId")
                         .HasColumnType("integer");
 
                     b.Property<double>("SeverityScore")

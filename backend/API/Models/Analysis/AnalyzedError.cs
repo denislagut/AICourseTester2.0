@@ -22,5 +22,9 @@
 		public bool IsPrimary { get; set; } = true;
 		public double SeverityScore { get; set; }
 		public string? GroupKey { get; set; }
+		public int? RootBranchId { get; set; }
+		public bool IsOnCorrectPath { get; set; }
+		public bool IsUserPruned { get; set; }
+		public bool IsExpectedPruned { get; set; }
 	}
 }

@@ -43,5 +43,11 @@ namespace AICourseTester.Models
 		public string? GroupKey { get; set; }
 
 		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+		public int? ErrorTypeId { get; set; }
+		public ErrorType? ErrorType { get; set; }
+		public int? RootBranchId { get; set; }
+		public bool IsOnCorrectPath { get; set; }
+		public bool IsUserPruned { get; set; }
+		public bool IsExpectedPruned { get; set; }
 	}
 }

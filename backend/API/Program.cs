@@ -149,6 +149,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddScoped<IAlphaBetaErrorAnalysisService, AlphaBetaErrorAnalysisService>();
+builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 
 var app = builder.Build();
 
