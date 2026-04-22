@@ -23,6 +23,21 @@ namespace AICourseTester.Controllers
         private readonly UsersService _usersService;
 
 		private readonly IAlphaBetaErrorAnalysisService _errorAnalysisService;
+		private readonly IErrorClassificationService _errorClassificationService;
+
+		public ABController(
+			MainDbContext context,
+			UserManager<ApplicationUser> userManager,
+			UsersService usersService,
+			IAlphaBetaErrorAnalysisService errorAnalysisService,
+			IErrorClassificationService errorClassificationService)
+		{
+			_userManager = userManager;
+			_context = context;
+			_usersService = usersService;
+			_errorAnalysisService = errorAnalysisService;
+			_errorClassificationService = errorClassificationService;
+		}
 
 		private async Task SaveAnalysisErrorsAsync(int alphaBetaId, ErrorAnalysisResult analysisResult)
 		{
@@ -58,22 +73,14 @@ namespace AICourseTester.Controllers
 				IsPrimary = error.IsPrimary,
 				SeverityScore = error.SeverityScore,
 				GroupKey = error.GroupKey,
+				RootBranchId = error.RootBranchId,
+				IsOnCorrectPath = error.IsOnCorrectPath,
+				IsUserPruned = error.IsUserPruned,
+				IsExpectedPruned = error.IsExpectedPruned,
 				CreatedAt = DateTime.UtcNow
 			}).ToList();
 
 			await _context.ErrorRecords.AddRangeAsync(errorEntities);
-		}
-
-		public ABController(
-	    MainDbContext context,
-	    UserManager<ApplicationUser> userManager,
-	    UsersService usersService,
-	    IAlphaBetaErrorAnalysisService errorAnalysisService)
-		{
-			_userManager = userManager;
-			_context = context;
-			_usersService = usersService;
-			_errorAnalysisService = errorAnalysisService;
 		}
 
 		[HttpGet("Train")]
@@ -166,6 +173,8 @@ namespace AICourseTester.Controllers
 			_context.AlphaBeta.Update(ab);
 			await _context.SaveChangesAsync();
 
+			await _errorClassificationService.ClassifyErrorsAsync(ab.Id);
+
 			return solution;
 		}
 
@@ -232,6 +241,91 @@ namespace AICourseTester.Controllers
 				Name = User.Identity?.Name,
 				Claims = User.Claims.Select(c => new { c.Type, c.Value }).ToList()
 			});
+		}
+
+		[Authorize, HttpGet("Test/Errors/Classified")]
+		public async Task<ActionResult<List<object>>> GetABTestClassifiedErrors()
+		{
+			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			var errors = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == ab.Id)
+				.Include(e => e.ErrorType)
+				.OrderBy(e => e.Id)
+				.Select(e => new
+				{
+					e.Id,
+					e.Code,
+					e.Message,
+					e.NodeId,
+					e.TreeLevel,
+					e.ElementType,
+					e.ExpectedA,
+					e.ActualA,
+					e.ExpectedB,
+					e.ActualB,
+					e.PathStepIndex,
+					e.ExpectedPathNodeId,
+					e.ActualPathNodeId,
+					e.SeverityScore,
+					e.GroupKey,
+					ErrorType = e.ErrorType == null ? null : new
+					{
+						e.ErrorType.Id,
+						e.ErrorType.Code,
+						e.ErrorType.Name,
+						e.ErrorType.Description,
+						e.ErrorType.DefaultSeverity
+					}
+				})
+				.ToListAsync<object>();
+
+			return Ok(errors);
+		}
+
+		[Authorize, HttpGet("Test/Errors/Aspects")]
+		public async Task<ActionResult<List<object>>> GetABTestErrorAspects()
+		{
+			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			var result = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == ab.Id && e.ErrorTypeId != null)
+				.Include(e => e.ErrorType)
+					.ThenInclude(et => et!.ErrorTypeAspects)
+						.ThenInclude(eta => eta.KnowledgeAspect)
+				.Select(e => new
+				{
+					e.Id,
+					e.Code,
+					e.Message,
+					ErrorType = e.ErrorType == null ? null : new
+					{
+						e.ErrorType.Id,
+						e.ErrorType.Code,
+						e.ErrorType.Name
+					},
+					Aspects = e.ErrorType == null
+						? new List<object>()
+						: e.ErrorType.ErrorTypeAspects.Select(eta => new
+						{
+							eta.KnowledgeAspectId,
+							eta.KnowledgeAspect.Name,
+							eta.KnowledgeAspect.Description,
+							eta.KnowledgeAspect.TopicName,
+							eta.Weight
+						}).Cast<object>().ToList()
+				})
+				.ToListAsync<object>();
+
+			return Ok(result);
 		}
 
 		private async Task<bool> _assignTask(string userId, int treeHeight, int maxValue, int template)

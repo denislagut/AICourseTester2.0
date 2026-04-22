@@ -177,6 +177,7 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
             problem: { head: data.head },
             userSolution: null,
             userPath: null,
+            userPrunedNodeIds: data.userPrunedNodeIds,
             isSolved: false,
             date: null,
             correctSolution: null
@@ -217,6 +218,7 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
             problem: data.task.problem,
             userSolution: data.task.userSolution,
             userPath: data.task.userPath,
+            userPrunedNodeIds: data.userPrunedNodeIds,
             isSolved: data.task.isSolved,
             date: data.task.date,
             correctSolution: { nodes: data.task.solution, path: data.task.path } || { nodes: [], path: [] }
@@ -245,6 +247,7 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
             problem: data.problem,
             userSolution: data.userSolution,
             userPath: data.userPath,
+            userPrunedNodeIds: data.userPrunedNodeIds,
             isSolved: data.isSolved,
             date: data.date,
             correctSolution: { nodes: data.solution, path: data.path } || { nodes: [], path: [] }
@@ -543,10 +546,18 @@ async function submitSolution(userSolution, isTrainingMode, problem) {
     const authtoken = Cookies.get('.AspNetCore.Identity.Application');
 
     const url = isTrainingMode ? `${apiHost}/AB/Train` : `${apiHost}/AB/Test`;
-    const body = isTrainingMode ? JSON.stringify({ head: problem.head, nodes: userSolution.nodes, path: userSolution.path }) : JSON.stringify({
-        nodes: userSolution.nodes,
-        path: userSolution.path
-    });
+    const body = isTrainingMode
+        ? JSON.stringify({
+            head: problem.head,
+            nodes: userSolution.nodes,
+            path: userSolution.path,
+            prunedNodeIds: userSolution.prunedNodeIds
+        })
+        : JSON.stringify({
+            nodes: userSolution.nodes,
+            path: userSolution.path,
+            prunedNodeIds: userSolution.prunedNodeIds
+        });
 
     const response = await fetch(url, {
         method: 'POST',
@@ -768,7 +779,14 @@ function checkSolution(userSolution, correctSolution, isTrainingMode = false) {
     };
 }
 
-function renderTree(node, parentContainer = null, level = 0, userSolution = null, userPath = null, isSolved = false) {
+function renderTree(
+    node,
+    parentContainer = null,
+    level = 0,
+    userSolution = null,
+    userPath = null,
+    userPrunedNodeIds = null,
+    isSolved = false) {
     const container = parentContainer || document.getElementById('tree-container');
     if (!parentContainer) container.innerHTML = '';
 
@@ -832,11 +850,15 @@ function renderTree(node, parentContainer = null, level = 0, userSolution = null
             line.dataset.childId = childNode.id;
             
             let strokeColor = '#808080';
+            const prunedSet = new Set(userPrunedNodeIds || []);
+
             if (isSolved && userPath && userSolution) {
                 if (userPathSet.has(childNode.id)) {
                     strokeColor = '#4CAF50';
-                } else if (!userNodeIds.has(childNode.id)) {
+                } else if (prunedSet.has(childNode.id)) {
                     strokeColor = '#f44336';
+                } else {
+                    strokeColor = '#808080';
                 }
             }
 
@@ -878,7 +900,8 @@ function renderTree(node, parentContainer = null, level = 0, userSolution = null
 function collectSolution() {
     const solution = {
         nodes: [],
-        path: []
+        path: [],
+        prunedNodeIds: []
     };
     
     const emptyNodes = [];
@@ -914,6 +937,7 @@ function collectSolution() {
             redBranchChildIds.add(childId);
         }
     });
+    solution.prunedNodeIds = Array.from(redBranchChildIds);
     
     document.querySelectorAll('.tree-node').forEach(nodeElement => {
         const nodeId = parseInt(nodeElement.dataset.nodeId);

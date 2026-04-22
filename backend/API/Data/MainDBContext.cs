@@ -14,8 +14,11 @@ namespace AICourseTester.Data
         public DbSet<UserGroups> UserGroups { get; set; } = null!;
 
         public DbSet<ErrorRecord> ErrorRecords { get; set; }
+		public DbSet<ErrorType> ErrorTypes { get; set; }
+		public DbSet<KnowledgeAspect> KnowledgeAspects { get; set; }
+		public DbSet<ErrorTypeAspect> ErrorTypeAspects { get; set; }
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
+		protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
@@ -54,12 +57,35 @@ namespace AICourseTester.Data
                 .Ignore(c => c.TwoFactorEnabled)
                 .Ignore(c => c.PhoneNumber)
                 .Ignore(c => c.PhoneNumberConfirmed);
+
             modelBuilder.Entity<ErrorRecord>()
                 .HasOne(e => e.AlphaBeta)
                 .WithMany(a => a.Errors)
                 .HasForeignKey(e => e.AlphaBetaId)
                 .OnDelete(DeleteBehavior.Cascade);
+			modelBuilder.Entity<ErrorRecord>()
+	            .HasOne(e => e.AlphaBeta)
+	            .WithMany(a => a.Errors)
+	            .HasForeignKey(e => e.AlphaBetaId)
+	            .OnDelete(DeleteBehavior.Cascade);
+			modelBuilder.Entity<ErrorRecord>()
+				.HasOne(e => e.ErrorType)
+				.WithMany(t => t.Errors)
+				.HasForeignKey(e => e.ErrorTypeId)
+				.OnDelete(DeleteBehavior.SetNull);
 
-        }
+			modelBuilder.Entity<ErrorTypeAspect>()
+				.HasOne(eta => eta.ErrorType)
+				.WithMany(et => et.ErrorTypeAspects)
+				.HasForeignKey(eta => eta.ErrorTypeId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			modelBuilder.Entity<ErrorTypeAspect>()
+				.HasOne(eta => eta.KnowledgeAspect)
+				.WithMany(ka => ka.ErrorTypeAspects)
+				.HasForeignKey(eta => eta.KnowledgeAspectId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+		}
     }
 }
