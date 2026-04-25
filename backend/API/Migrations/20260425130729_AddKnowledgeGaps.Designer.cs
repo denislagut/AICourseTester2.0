@@ -3,6 +3,7 @@ using System;
 using AICourseTester.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AICourseTester.Migrations
 {
     [DbContext(typeof(MainDbContext))]
-    partial class MainDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260425130729_AddKnowledgeGaps")]
+    partial class AddKnowledgeGaps
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -205,24 +208,11 @@ namespace AICourseTester.Migrations
                     b.Property<int?>("PathStepIndex")
                         .HasColumnType("integer");
 
-                    b.Property<string>("PatternType")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
                     b.Property<int?>("RootBranchId")
                         .HasColumnType("integer");
 
                     b.Property<double>("SeverityScore")
                         .HasColumnType("double precision");
-
-                    b.Property<int>("SimilarErrorCount")
-                        .HasColumnType("integer");
-
-                    b.Property<double>("SimilarErrorRatio")
-                        .HasColumnType("double precision");
-
-                    b.Property<int>("SimilarOpportunityCount")
-                        .HasColumnType("integer");
 
                     b.Property<int?>("TreeLevel")
                         .HasColumnType("integer");

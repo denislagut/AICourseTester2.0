@@ -49,5 +49,14 @@ namespace AICourseTester.Models
 		public bool IsOnCorrectPath { get; set; }
 		public bool IsUserPruned { get; set; }
 		public bool IsExpectedPruned { get; set; }
+
+		[MaxLength(64)]
+		public string? PatternType { get; set; }
+
+		public int SimilarErrorCount { get; set; }
+
+		public int SimilarOpportunityCount { get; set; }
+
+		public double SimilarErrorRatio { get; set; }
 	}
 }
