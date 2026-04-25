@@ -150,6 +150,7 @@ builder.Services.AddRateLimiter(options =>
 
 builder.Services.AddScoped<IAlphaBetaErrorAnalysisService, AlphaBetaErrorAnalysisService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
+builder.Services.AddScoped<IKnowledgeGapDetectionService, KnowledgeGapDetectionService>();
 
 var app = builder.Build();
 

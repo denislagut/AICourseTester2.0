@@ -17,6 +17,7 @@ namespace AICourseTester.Data
 		public DbSet<ErrorType> ErrorTypes { get; set; }
 		public DbSet<KnowledgeAspect> KnowledgeAspects { get; set; }
 		public DbSet<ErrorTypeAspect> ErrorTypeAspects { get; set; }
+		public DbSet<KnowledgeGap> KnowledgeGaps { get; set; }
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -84,6 +85,23 @@ namespace AICourseTester.Data
 				.HasOne(eta => eta.KnowledgeAspect)
 				.WithMany(ka => ka.ErrorTypeAspects)
 				.HasForeignKey(eta => eta.KnowledgeAspectId)
+				.OnDelete(DeleteBehavior.Cascade);
+			modelBuilder.Entity<KnowledgeGap>()
+	            .HasOne(g => g.User)
+	            .WithMany()
+	            .HasForeignKey(g => g.UserId)
+	            .OnDelete(DeleteBehavior.Cascade);
+
+			modelBuilder.Entity<KnowledgeGap>()
+				.HasOne(g => g.AlphaBeta)
+				.WithMany()
+				.HasForeignKey(g => g.AlphaBetaId)
+				.OnDelete(DeleteBehavior.Cascade);
+
+			modelBuilder.Entity<KnowledgeGap>()
+				.HasOne(g => g.KnowledgeAspect)
+				.WithMany()
+				.HasForeignKey(g => g.KnowledgeAspectId)
 				.OnDelete(DeleteBehavior.Cascade);
 
 		}

@@ -20,7 +20,7 @@ namespace AICourseTester.Services
 			AnalyzePath(userSolution, correctSolution, result);
 			AnalyzePruning(userSolution, correctSolution, nodeMeta, result);
 			AnalyzeConsistency(userSolution, correctSolution, nodeMeta, result);
-			AggregatePatterns(result);
+			AggregatePatterns(result, nodeMeta);
 
 			result.TotalErrors = result.Errors.Count;
 			result.NodeErrorsCount = result.Errors.Count(e => e.Code.StartsWith("NODE"));
@@ -452,25 +452,130 @@ namespace AICourseTester.Services
 				});
 			}
 		}
-		private void AggregatePatterns(ErrorAnalysisResult result)
+		private void AggregatePatterns(
+	ErrorAnalysisResult result,
+	Dictionary<int, NodeMeta>? nodeMeta = null)
 		{
-			var grouped = result.Errors
+			if (result.Errors.Count == 0)
+			{
+				return;
+			}
+
+			var groups = result.Errors
 				.Where(e => !string.IsNullOrWhiteSpace(e.GroupKey))
 				.GroupBy(e => e.GroupKey!);
 
-			foreach (var group in grouped)
+			foreach (var group in groups)
 			{
-				if (group.Count() >= 3)
+				var errors = group.ToList();
+				var errorCount = errors.Count;
+
+				var opportunityCount = EstimateOpportunityCount(group.Key, errors, nodeMeta);
+				var ratio = opportunityCount == 0
+					? 1.0
+					: (double)errorCount / opportunityCount;
+
+				var patternType = DeterminePatternType(errorCount, ratio);
+
+				foreach (var error in errors)
 				{
-					foreach (var error in group)
-					{
-						error.SeverityScore += 0.5;
-					}
+					error.SimilarErrorCount = errorCount;
+					error.SimilarOpportunityCount = opportunityCount;
+					error.SimilarErrorRatio = Math.Round(ratio, 2);
+					error.PatternType = patternType;
+
+					error.SeverityScore = AdjustSeverityByPattern(
+						error.SeverityScore,
+						patternType);
 				}
 			}
 
-			result.HasMassNodeErrors = result.Errors.Count(e => e.Code.StartsWith("NODE")) >= 3;
-			result.HasPathErrors = result.Errors.Any(e => e.Code.StartsWith("PATH"));
+			result.HasMassNodeErrors = result.Errors.Any(e =>
+				e.PatternType == "SYSTEMATIC_MISUNDERSTANDING" &&
+				e.Code.StartsWith("NODE"));
+
+			result.HasPathErrors = result.Errors.Any(e =>
+				e.Code.StartsWith("PATH"));
+		}
+		private int EstimateOpportunityCount(
+	string groupKey,
+	List<AnalyzedError> errors,
+	Dictionary<int, NodeMeta>? nodeMeta)
+		{
+			if (nodeMeta == null || nodeMeta.Count == 0)
+			{
+				return Math.Max(errors.Count, 1);
+			}
+
+			if (groupKey.StartsWith("NODE_A_L") ||
+				groupKey.StartsWith("NODE_B_L") ||
+				groupKey.StartsWith("NODE_VALUE_L"))
+			{
+				var level = errors.FirstOrDefault()?.TreeLevel;
+				if (level == null)
+				{
+					return Math.Max(errors.Count, 1);
+				}
+
+				return nodeMeta.Values.Count(m =>
+					m.Depth == level &&
+					!m.IsLeaf);
+			}
+
+			if (groupKey.StartsWith("NODE_MISSING_L") ||
+				groupKey.StartsWith("NODE_UNEXPECTED_L"))
+			{
+				var level = errors.FirstOrDefault()?.TreeLevel;
+				if (level == null)
+				{
+					return Math.Max(errors.Count, 1);
+				}
+
+				return nodeMeta.Values.Count(m => m.Depth == level);
+			}
+
+			if (groupKey.StartsWith("FAILED_PRUNE_B") ||
+				groupKey.StartsWith("PRUNE_REQUIRED_B") ||
+				groupKey.StartsWith("PROCESSED_PRUNED_B"))
+			{
+				var rootBranchId = errors.FirstOrDefault()?.RootBranchId;
+				if (rootBranchId == null)
+				{
+					return Math.Max(errors.Count, 1);
+				}
+
+				return nodeMeta.Values.Count(m =>
+					m.RootBranchId == rootBranchId &&
+					m.Depth > 1);
+			}
+
+			return Math.Max(errors.Count, 1);
+		}
+
+		private string DeterminePatternType(int errorCount, double ratio)
+		{
+			if (errorCount <= 1 && ratio <= 0.25)
+			{
+				return "CARELESS_MISTAKE";
+			}
+
+			if (ratio >= 0.6 || errorCount >= 3)
+			{
+				return "SYSTEMATIC_MISUNDERSTANDING";
+			}
+
+			return "PARTIAL_MISUNDERSTANDING";
+		}
+
+		private double AdjustSeverityByPattern(double severity, string patternType)
+		{
+			return patternType switch
+			{
+				"CARELESS_MISTAKE" => Math.Round(severity * 0.75, 2),
+				"PARTIAL_MISUNDERSTANDING" => severity,
+				"SYSTEMATIC_MISUNDERSTANDING" => Math.Round(severity * 1.35, 2),
+				_ => severity
+			};
 		}
 	}
 }

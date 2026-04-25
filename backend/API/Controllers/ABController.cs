@@ -24,19 +24,22 @@ namespace AICourseTester.Controllers
 
 		private readonly IAlphaBetaErrorAnalysisService _errorAnalysisService;
 		private readonly IErrorClassificationService _errorClassificationService;
+		private readonly IKnowledgeGapDetectionService _knowledgeGapDetectionService;
 
 		public ABController(
 			MainDbContext context,
 			UserManager<ApplicationUser> userManager,
 			UsersService usersService,
 			IAlphaBetaErrorAnalysisService errorAnalysisService,
-			IErrorClassificationService errorClassificationService)
+			IErrorClassificationService errorClassificationService,
+			IKnowledgeGapDetectionService knowledgeGapDetectionService)
 		{
 			_userManager = userManager;
 			_context = context;
 			_usersService = usersService;
 			_errorAnalysisService = errorAnalysisService;
 			_errorClassificationService = errorClassificationService;
+			_knowledgeGapDetectionService = knowledgeGapDetectionService;
 		}
 
 		private async Task SaveAnalysisErrorsAsync(int alphaBetaId, ErrorAnalysisResult analysisResult)
@@ -77,6 +80,10 @@ namespace AICourseTester.Controllers
 				IsOnCorrectPath = error.IsOnCorrectPath,
 				IsUserPruned = error.IsUserPruned,
 				IsExpectedPruned = error.IsExpectedPruned,
+				PatternType = error.PatternType,
+				SimilarErrorCount = error.SimilarErrorCount,
+				SimilarOpportunityCount = error.SimilarOpportunityCount,
+				SimilarErrorRatio = error.SimilarErrorRatio,
 				CreatedAt = DateTime.UtcNow
 			}).ToList();
 
@@ -174,6 +181,8 @@ namespace AICourseTester.Controllers
 			await _context.SaveChangesAsync();
 
 			await _errorClassificationService.ClassifyErrorsAsync(ab.Id);
+
+			await _knowledgeGapDetectionService.DetectForAlphaBetaAsync(ab.Id, ab.UserId);
 
 			return solution;
 		}
@@ -326,6 +335,73 @@ namespace AICourseTester.Controllers
 				.ToListAsync<object>();
 
 			return Ok(result);
+		}
+
+		[Authorize, HttpGet("Test/KnowledgeGaps")]
+		public async Task<ActionResult<List<object>>> GetABTestKnowledgeGaps()
+		{
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			var gaps = await _context.KnowledgeGaps
+				.Where(g => g.AlphaBetaId == ab.Id)
+				.Include(g => g.KnowledgeAspect)
+				.OrderByDescending(g => g.GapScore)
+				.Select(g => new
+				{
+					g.Id,
+					g.KnowledgeAspectId,
+					AspectName = g.KnowledgeAspect.Name,
+					AspectDescription = g.KnowledgeAspect.Description,
+					g.ErrorCount,
+					g.TotalWeight,
+					g.AverageSeverity,
+					g.GapScore,
+					g.Level,
+					g.CreatedAt
+				})
+				.ToListAsync<object>();
+
+			return Ok(gaps);
+		}
+
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator"), HttpGet("Users/{userId}/KnowledgeGaps")]
+		public async Task<ActionResult<List<object>>> GetUserKnowledgeGaps(string userId)
+		{
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.UserId == userId);
+
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			var gaps = await _context.KnowledgeGaps
+				.Where(g => g.AlphaBetaId == ab.Id)
+				.Include(g => g.KnowledgeAspect)
+				.OrderByDescending(g => g.GapScore)
+				.Select(g => new
+				{
+					g.Id,
+					g.KnowledgeAspectId,
+					AspectName = g.KnowledgeAspect.Name,
+					AspectDescription = g.KnowledgeAspect.Description,
+					g.ErrorCount,
+					g.TotalWeight,
+					g.AverageSeverity,
+					g.GapScore,
+					g.Level,
+					g.CreatedAt
+				})
+				.ToListAsync<object>();
+
+			return Ok(gaps);
 		}
 
 		private async Task<bool> _assignTask(string userId, int treeHeight, int maxValue, int template)
