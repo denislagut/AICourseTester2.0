@@ -119,11 +119,91 @@ namespace AICourseTester.Services
 			}
 		}
 
+		private ErrorType? MatchFifteenPuzzleErrorType(
+	ErrorRecord error,
+	List<ErrorRecord> allErrors,
+	List<ErrorType> errorTypes)
+		{
+			if (error.Code == "H_INCORRECT")
+			{
+				if (error.GroupKey == "HAMMING_H_VALUE")
+				{
+					return errorTypes.FirstOrDefault(t => t.Code == "HAMMING_HEURISTIC_CALCULATION_ERROR");
+				}
+
+				if (error.GroupKey == "MANHATTAN_H_VALUE")
+				{
+					return errorTypes.FirstOrDefault(t => t.Code == "MANHATTAN_HEURISTIC_CALCULATION_ERROR");
+				}
+
+				return errorTypes.FirstOrDefault(t => t.Code == "HEURISTIC_VALUE_CALCULATION_ERROR");
+			}
+
+			if (error.Code == "G_INCORRECT")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "PATH_COST_CALCULATION_ERROR");
+			}
+
+			if (error.Code == "F_FORMULA_INCONSISTENCY")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "F_FORMULA_CONSISTENCY_ERROR");
+			}
+
+			if (error.Code == "F_DERIVED_FROM_INCORRECT_COMPONENTS")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "DEPENDENT_VALUE_ERROR");
+			}
+
+			if (error.Code == "F_INCORRECT")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "F_SCORE_CALCULATION_ERROR");
+			}
+
+			if (error.Code == "OPEN_ORDER_INCORRECT")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "NODE_EXPANSION_ORDER_ERROR");
+			}
+
+			if (error.Code == "NODE_MISSING" ||
+				error.Code == "NODE_UNEXPECTED")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "A_STAR_SEARCH_STRATEGY_ERROR");
+			}
+
+			return errorTypes.FirstOrDefault(t => t.Code == "UNCLASSIFIED_ERROR");
+		}
+
+		public async Task ClassifyFifteenPuzzleErrorsAsync(int fifteenPuzzleId)
+		{
+			await EnsureReferenceDataAsync();
+
+			var errors = await _context.ErrorRecords
+				.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fifteenPuzzleId)
+				.ToListAsync();
+
+			if (errors.Count == 0)
+				return;
+
+			var errorTypes = await _context.ErrorTypes.ToListAsync();
+
+			foreach (var error in errors)
+			{
+				var matchedType = MatchFifteenPuzzleErrorType(error, errors, errorTypes);
+				error.ErrorTypeId = matchedType?.Id;
+			}
+
+			await _context.SaveChangesAsync();
+		}
+
 		private ErrorType? MatchErrorType(
 			ErrorRecord error,
 			List<ErrorRecord> allErrors,
 			List<ErrorType> errorTypes)
 		{
+			if (error.TaskType == "FifteenPuzzle")
+			{
+				return MatchFifteenPuzzleErrorType(error, allErrors, errorTypes);
+			}
 			// 1. Ошибки вычисления значений узлов
 			if (error.Code == "NODE_A_INCORRECT" ||
 				error.Code == "NODE_B_INCORRECT" ||
@@ -287,6 +367,69 @@ namespace AICourseTester.Services
 			Name = "Неклассифицированная ошибка",
 			Description = "Ошибка не была сопоставлена с известным типом.",
 			DefaultSeverity = 1.0
+		},
+		new ErrorType
+		{
+			Code = "HEURISTIC_VALUE_CALCULATION_ERROR",
+			Name = "Ошибка расчёта эвристики",
+			Description = "Неверно рассчитано значение эвристической функции h(n).",
+			DefaultSeverity = 3.0
+		},
+		new ErrorType
+		{
+			Code = "PATH_COST_CALCULATION_ERROR",
+			Name = "Ошибка расчёта стоимости пути",
+			Description = "Неверно рассчитано значение g(n).",
+			DefaultSeverity = 2.5
+		},
+		new ErrorType
+		{
+			Code = "F_SCORE_CALCULATION_ERROR",
+			Name = "Ошибка расчёта оценочной функции",
+			Description = "Неверно рассчитано значение f(n).",
+			DefaultSeverity = 2.5
+		},
+		new ErrorType
+		{
+			Code = "F_FORMULA_CONSISTENCY_ERROR",
+			Name = "Ошибка формулы f = g + h",
+			Description = "Значение f(n) не соответствует сумме g(n) и h(n).",
+			DefaultSeverity = 3.5
+		},
+		new ErrorType
+		{
+			Code = "NODE_EXPANSION_ORDER_ERROR",
+			Name = "Ошибка порядка раскрытия узлов",
+			Description = "Неверно выбран порядок раскрытия узлов в алгоритме A*.",
+			DefaultSeverity = 3.5
+		},
+		new ErrorType
+		{
+			Code = "A_STAR_SEARCH_STRATEGY_ERROR",
+			Name = "Ошибка стратегии поиска A*",
+			Description = "Пользователь обработал лишние узлы или пропустил необходимые.",
+			DefaultSeverity = 3.0
+		},
+		new ErrorType
+{
+			Code = "HAMMING_HEURISTIC_CALCULATION_ERROR",
+			Name = "Ошибка расчёта расстояния Хемминга",
+			Description = "Неверно рассчитана эвристика Хемминга.",
+			DefaultSeverity = 3.0
+		},
+		new ErrorType
+		{
+			Code = "MANHATTAN_HEURISTIC_CALCULATION_ERROR",
+			Name = "Ошибка расчёта Манхэттенского расстояния",
+			Description = "Неверно рассчитана манхэттенская эвристика.",
+			DefaultSeverity = 3.0
+		},
+		new ErrorType
+		{
+			Code = "DEPENDENT_VALUE_ERROR",
+			Name = "Производная ошибка значения",
+			Description = "Значение отличается от эталона как следствие ошибки в другом параметре.",
+			DefaultSeverity = 1.0
 		}
 	};
 
@@ -350,8 +493,50 @@ namespace AICourseTester.Services
 		new KnowledgeAspect
 		{
 			Name = "Согласованность решения",
-			Description = "Согласованность вычисленных значений, пути и отсечённых ветвей.",
-			TopicName = "Минимакс и альфа-бета отсечение",
+			Description = "Согласованность вычисленных значений, выбранного пути, раскрытых узлов и выполненных отсечений.",
+			TopicName = "Алгоритмы поиска",
+			IsActive = true
+		},
+		new KnowledgeAspect
+		{
+			Name = "Расчёт эвристической функции",
+			Description = "Понимание назначения и расчёта эвристической функции h(n).",
+			TopicName = "Алгоритм A*",
+			IsActive = true
+		},
+		new KnowledgeAspect
+		{
+			Name = "Расчёт расстояния Хемминга",
+			Description = "Понимание расчёта эвристики по количеству неправильно расположенных фишек.",
+			TopicName = "Алгоритм A*",
+			IsActive = true
+		},
+		new KnowledgeAspect
+		{
+			Name = "Расчёт Манхэттенского расстояния",
+			Description = "Понимание расчёта суммы расстояний фишек до целевых позиций.",
+			TopicName = "Алгоритм A*",
+			IsActive = true
+		},
+		new KnowledgeAspect
+		{
+			Name = "Расчёт стоимости пути g(n)",
+			Description = "Понимание накопленной стоимости пути от начального состояния.",
+			TopicName = "Алгоритм A*",
+			IsActive = true
+		},
+		new KnowledgeAspect
+		{
+			Name = "Расчёт оценочной функции f(n)",
+			Description = "Понимание формулы f(n)=g(n)+h(n).",
+			TopicName = "Алгоритм A*",
+			IsActive = true
+		},
+		new KnowledgeAspect
+		{
+			Name = "Выбор узла для раскрытия в A*",
+			Description = "Понимание принципа выбора следующего узла с минимальным f(n).",
+			TopicName = "Алгоритм A*",
 			IsActive = true
 		}
 	};
@@ -381,29 +566,43 @@ namespace AICourseTester.Services
 			var existingLinks = await _context.ErrorTypeAspects.ToListAsync();
 
 			var requiredLinks = new List<(string errorTypeCode, string aspectName, double weight)>
-	{
-		("MINIMAX_VALUE_CALCULATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
-		("MIN_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
-		("MAX_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
+			{
+				("MINIMAX_VALUE_CALCULATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
+				("MIN_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
+				("MAX_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
 
-		("OPTIMAL_PATH_SELECTION_ERROR", "Выбор оптимального хода", 1.0),
-		("PATH_VALUE_CONSISTENCY_ERROR", "Выбор оптимального хода", 1.0),
-		("PATH_VALUE_CONSISTENCY_ERROR", "Согласованность решения", 0.7),
+				("OPTIMAL_PATH_SELECTION_ERROR", "Выбор оптимального хода", 1.0),
+				("PATH_VALUE_CONSISTENCY_ERROR", "Выбор оптимального хода", 1.0),
+				("PATH_VALUE_CONSISTENCY_ERROR", "Согласованность решения", 0.7),
 
-		("PRUNING_DECISION_ERROR", "Понимание условий альфа-бета отсечения", 1.0),
+				("PRUNING_DECISION_ERROR", "Понимание условий альфа-бета отсечения", 1.0),
 
-		("PRUNING_BOUNDARY_ERROR", "Понимание границ действия отсечения", 1.0),
-		("PRUNING_BOUNDARY_ERROR", "Понимание условий альфа-бета отсечения", 0.6),
+				("PRUNING_BOUNDARY_ERROR", "Понимание границ действия отсечения", 1.0),
+				("PRUNING_BOUNDARY_ERROR", "Понимание условий альфа-бета отсечения", 0.6),
 
-		("PRUNING_PATH_CONFLICT_ERROR", "Понимание границ действия отсечения", 0.8),
-		("PRUNING_PATH_CONFLICT_ERROR", "Согласованность решения", 1.0),
+				("PRUNING_PATH_CONFLICT_ERROR", "Понимание границ действия отсечения", 0.8),
+				("PRUNING_PATH_CONFLICT_ERROR", "Согласованность решения", 1.0),
 
-		("SOLUTION_CONSISTENCY_ERROR", "Согласованность решения", 1.0),
+				("SOLUTION_CONSISTENCY_ERROR", "Согласованность решения", 1.0),
 
-		("TREE_STRUCTURE_PROCESSING_ERROR", "Корректная обработка структуры дерева", 1.0),
+				("TREE_STRUCTURE_PROCESSING_ERROR", "Корректная обработка структуры дерева", 1.0),
 
-		("UNCLASSIFIED_ERROR", "Корректная обработка структуры дерева", 0.1)
-	};
+				("UNCLASSIFIED_ERROR", "Корректная обработка структуры дерева", 0.1),
+
+				("HEURISTIC_VALUE_CALCULATION_ERROR", "Расчёт эвристической функции", 1.0),
+
+				("HAMMING_HEURISTIC_CALCULATION_ERROR", "Расчёт расстояния Хемминга", 1.0),
+
+				("MANHATTAN_HEURISTIC_CALCULATION_ERROR", "Расчёт Манхэттенского расстояния", 1.0),
+
+				("PATH_COST_CALCULATION_ERROR", "Расчёт стоимости пути g(n)", 1.0),
+
+				("F_SCORE_CALCULATION_ERROR", "Расчёт оценочной функции f(n)", 1.0),
+				("F_FORMULA_CONSISTENCY_ERROR", "Расчёт оценочной функции f(n)", 1.0),
+
+				("NODE_EXPANSION_ORDER_ERROR", "Выбор узла для раскрытия в A*", 1.0),
+				("A_STAR_SEARCH_STRATEGY_ERROR", "Выбор узла для раскрытия в A*", 0.8)
+			};
 
 			foreach (var (errorTypeCode, aspectName, weight) in requiredLinks)
 			{
@@ -433,6 +632,31 @@ namespace AICourseTester.Services
 					existingLink.Weight = weight;
 				}
 			}
+			var requiredLinkKeys = requiredLinks
+				.Select(link =>
+				{
+					var errorType = errorTypes.FirstOrDefault(t => t.Code == link.errorTypeCode);
+					var aspect = aspects.FirstOrDefault(a => a.Name == link.aspectName);
+
+					if (errorType == null || aspect == null)
+						return null;
+
+					return new
+					{
+						ErrorTypeId = errorType.Id,
+						KnowledgeAspectId = aspect.Id
+					};
+				})
+				.Where(x => x != null)
+				.ToList();
+
+			var obsoleteLinks = existingLinks
+				.Where(existing => !requiredLinkKeys.Any(required =>
+					required!.ErrorTypeId == existing.ErrorTypeId &&
+					required.KnowledgeAspectId == existing.KnowledgeAspectId))
+				.ToList();
+
+			_context.ErrorTypeAspects.RemoveRange(obsoleteLinks);
 
 			await _context.SaveChangesAsync();
 		}

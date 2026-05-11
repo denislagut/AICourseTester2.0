@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', async function() {
+document.addEventListener('DOMContentLoaded', async function () {
     if (!restrictAccess()) return;
 
     const userFullName = sessionStorage.getItem('userFullName');
@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     document.querySelector('.profile-tooltip_username').textContent = userFullName;
     document.querySelector('.profile-tooltip_role').textContent = isTeacher ? 'Преподаватель' : 'Студент';
-    
+
     const profileLink = document.querySelector('.profile-tooltip_to-profile-href');
     if (profileLink) {
         profileLink.href = isTeacher ? '/ProfileTeacherPage/ProfileTeacherPage.html' : '/ProfileStudentPage/ProfileStudentPage.html';
@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         const taskData = await fetchTaskData(taskId, userId, isViewMode, isTrainingMode);
+
         if (!taskData || !taskData.problem || taskData.problem.length === 0) {
             alert('Данные задачи не найдены');
             window.location.href = userId ? "/ProfileTeacherPage/ProfileTeacherPage.html" : "/ProfileStudentPage/ProfileStudentPage.html";
@@ -53,7 +54,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             studentInfo.textContent = `Студент: ${taskData.originalData.user.name} ${taskData.originalData.user.secondName} ${taskData.originalData.user.patronymic}`;
         }
 
-        displayHeuristicName(taskData.settings ? taskData.settings.heuristic : 1);
+        displayHeuristicName(taskData.settings?.heuristic || taskData.heuristic || 1);
 
         window.taskData = taskData;
         window.openOrder = [];
@@ -62,19 +63,33 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         if (isViewMode || taskData.isSolved) {
             document.querySelectorAll('.heuristic-input').forEach(input => input.disabled = true);
+
             const submitButton = document.getElementById('submit-solution');
-            if (isViewMode && submitButton) submitButton.style.display = 'none';
-            else if (taskData.isSolved && submitButton) submitButton.style.display = 'block';
+            if (isViewMode && submitButton) {
+                submitButton.style.display = 'none';
+            } else if (taskData.isSolved && submitButton) {
+                submitButton.style.display = 'block';
+            }
+
             const solutionMessage = document.getElementById('solution-message');
-            if (solutionMessage) solutionMessage.style.display = 'block';
+            if (solutionMessage) {
+                solutionMessage.style.display = 'block';
+            }
+
             if (taskData.userSolution && taskData.userSolution.length > 0) {
                 displaySolutionFeedback(taskData);
-                taskData.userSolution.forEach(({ id, h, f, g }) => {
+
+                taskData.userSolution.forEach(node => {
+                    const id = getNodeId(node);
                     const inputs = document.querySelectorAll(`.heuristic-input[data-node-id="${id}"]`);
+
                     inputs.forEach(input => {
-                        if (input.dataset.param === 'h') input.value = h || '';
-                        if (input.dataset.param === 'f') input.value = f || '';
-                        if (input.dataset.param === 'g') input.value = g || '';
+                        const param = input.dataset.param;
+                        const value = getNodeValue(node, param);
+
+                        if (value !== undefined && value !== null && value !== -1) {
+                            input.value = value;
+                        }
                     });
                 });
             }
@@ -86,10 +101,27 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
+function getNodeId(node) {
+    return node?.id ?? node?.Id;
+}
+
+function getNodeValue(node, param) {
+    if (!node) return undefined;
+
+    if (param === 'openOrder') {
+        return node.openOrder ?? node.OpenOrder ?? node.openorder ?? node.Openorder;
+    }
+
+    const pascalParam = param.charAt(0).toUpperCase() + param.slice(1);
+    return node[param] ?? node[pascalParam];
+}
+
 function displayHeuristicName(heuristic) {
     const heuristicNameElement = document.getElementById('heuristic-name');
     if (heuristicNameElement) {
-        heuristicNameElement.textContent = heuristic === 2 ? 'Эвристика: Манхэттенское расстояние' : 'Эвристика: Расстояние Хемминга';
+        heuristicNameElement.textContent = heuristic === 2
+            ? 'Эвристика: Манхэттенское расстояние'
+            : 'Эвристика: Расстояние Хемминга';
     }
 }
 
@@ -100,6 +132,7 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
     }
 
     let url;
+
     if (isTrainingMode) {
         url = `${apiHost}/A/FifteenPuzzle/Train`;
         if (settings) {
@@ -131,41 +164,55 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
             const errorText = await response.text();
             throw new Error(`Ошибка HTTP: ${response.status} ${errorText}`);
         }
+
         if (response.status === 401) {
             const refreshtoken = Cookies.get('RefreshToken');
             if (isTokenExpired(authtoken)) {
                 refreshToken();
             }
         }
+
         const data = await response.json();
         console.log('Ответ API:', data);
 
         let formattedData = data;
+
         if (isTrainingMode) {
+            const heuristicFromInput = parseInt(document.getElementById('heuristic-input')?.value) || 1;
+
             formattedData = {
                 problem: data,
                 solution: [],
                 userSolution: [],
                 isSolved: false,
-                settings: settings || { heuristic: 1 }
+                settings: settings || {
+                    heuristic: heuristicFromInput,
+                    dimensions: parseInt(document.getElementById('dimensions-input')?.value) || 3,
+                    iters: parseInt(document.getElementById('iterations-input')?.value) || 3
+                }
             };
-        } else if (isViewMode && data.task) {
+        }
+        else if (isViewMode && data.task) {
             formattedData = {
+                id: data.task.id,
                 problem: data.task.problem,
                 solution: data.task.solution || [],
-                userSolution: data.task.userSolution && data.task.userSolution.heuristicValues 
-                    ? data.task.userSolution.heuristicValues 
+                userSolution: data.task.userSolution && data.task.userSolution.heuristicValues
+                    ? data.task.userSolution.heuristicValues
                     : data.task.userSolution || [],
                 isSolved: data.task.isSolved,
                 date: data.task.date,
+                heuristic: data.task.heuristic,
+                dimensions: data.task.dimensions,
+                treeHeight: data.task.treeHeight,
                 originalData: data
             };
         } else if (!data.problem || !Array.isArray(data.problem) || data.problem.length === 0) {
             throw new Error('Данные задачи отсутствуют или имеют неверный формат');
         }
 
-        const isValid = formattedData.problem.every(node => 
-            typeof node === 'object' && 
+        const isValid = formattedData.problem.every(node =>
+            typeof node === 'object' &&
             node !== null &&
             'id' in node &&
             'depth' in node &&
@@ -192,6 +239,7 @@ function renderTree(nodes, isViewMode) {
         console.error('Контейнер tree-container не найден');
         return;
     }
+
     treeContainer.innerHTML = '';
     treeContainer.style.overflowX = 'auto';
     treeContainer.style.whiteSpace = 'nowrap';
@@ -206,7 +254,11 @@ function renderTree(nodes, isViewMode) {
         levelContainer.className = `tree-level level-${i + 1}`;
         levelContainer.style.display = 'inline-flex';
         levelContainer.style.verticalAlign = 'top';
-        if (i > 0) levelContainer.style.display = 'none';
+
+        if (i > 0) {
+            levelContainer.style.display = 'none';
+        }
+
         levelContainer.id = `level-${i + 1}`;
         treeContainer.appendChild(levelContainer);
         return levelContainer;
@@ -241,6 +293,7 @@ function renderTree(nodes, isViewMode) {
                 if (childNode) {
                     const childElement = buildNode(childNode, level + 1);
                     childrenContainer.appendChild(childElement);
+
                     window.lines.push({
                         start: nodeElement,
                         end: childElement,
@@ -258,6 +311,7 @@ function renderTree(nodes, isViewMode) {
                 }
             });
         }
+
         return nodeElement;
     }
 
@@ -274,6 +328,7 @@ function renderTree(nodes, isViewMode) {
     canvas.height = treeContainer.scrollHeight;
     canvas.style.width = `${treeContainer.scrollWidth}px`;
     canvas.style.height = `${treeContainer.scrollHeight}px`;
+
     drawLinesOnCanvas();
 }
 
@@ -284,9 +339,10 @@ function createNodeElement(node, level, isViewMode) {
 
     const board = document.createElement('div');
     board.className = 'puzzle-board';
+
     const dimensions = node.state.length;
     board.style.gridTemplateColumns = `repeat(${dimensions}, 50px)`;
-    
+
     node.state.flat().forEach(value => {
         const tile = document.createElement('div');
         tile.className = `puzzle-tile ${value === 0 ? 'empty' : ''}`;
@@ -296,6 +352,7 @@ function createNodeElement(node, level, isViewMode) {
 
     const inputsContainer = document.createElement('div');
     inputsContainer.className = 'heuristic-inputs';
+
     ['h', 'f', 'g'].forEach(param => {
         const inputGroup = document.createElement('div');
         inputGroup.className = 'input-group';
@@ -311,13 +368,14 @@ function createNodeElement(node, level, isViewMode) {
 
     if (!isViewMode) {
         inputsContainer.querySelectorAll('.heuristic-input').forEach(input => {
-            input.addEventListener('input', function(e) {
+            input.addEventListener('input', function () {
                 this.value = this.value.replace(/[^0-9]/g, '');
                 if (this.value === '' || parseInt(this.value) < 0) {
                     this.value = '0';
                 }
             });
-            input.addEventListener('click', function(e) {
+
+            input.addEventListener('click', function (e) {
                 e.stopPropagation();
             });
         });
@@ -327,13 +385,19 @@ function createNodeElement(node, level, isViewMode) {
 }
 
 function toggleChildren(nodeId, level, isRestoring = false) {
+    if (!window.openOrder.includes(0)) {
+        window.openOrder.unshift(0);
+    }
     const childrenContainer = document.getElementById(`children-${nodeId}`);
     const levelContainer = document.getElementById(`level-${level + 1}`);
+
     console.log(`Попытка переключения узла ${nodeId}, level ${level + 1}, isRestoring: ${isRestoring}`);
+
     if (childrenContainer && levelContainer) {
         if (childrenContainer.style.display === 'none') {
             levelContainer.style.display = 'inline-flex';
             childrenContainer.style.display = 'inline-flex';
+
             if (!isRestoring && !window.openOrder.includes(nodeId)) {
                 window.openOrder.push(nodeId);
                 console.log('Порядок раскрытия:', window.openOrder);
@@ -341,14 +405,19 @@ function toggleChildren(nodeId, level, isRestoring = false) {
         } else {
             childrenContainer.style.display = 'none';
             collapseChildren(nodeId);
+
             const visibleContainers = levelContainer.querySelectorAll('.children-container');
-            const anyVisible = Array.from(visibleContainers).some(container => container.style.display === 'inline-flex');
+            const anyVisible = Array.from(visibleContainers)
+                .some(container => container.style.display === 'inline-flex');
+
             if (!anyVisible) {
                 levelContainer.style.display = 'none';
             }
+
             window.openOrder = window.openOrder.filter(id => id !== nodeId);
             console.log('Порядок раскрытия после сворачивания:', window.openOrder);
         }
+
         drawLinesOnCanvas();
     } else {
         console.warn(`Контейнер для узла ${nodeId} или уровня ${level + 1} не найден`);
@@ -357,17 +426,21 @@ function toggleChildren(nodeId, level, isRestoring = false) {
 
 function collapseChildren(nodeId) {
     const childrenContainer = document.getElementById(`children-${nodeId}`);
+
     if (childrenContainer) {
         const childNodes = childrenContainer.querySelectorAll('.tree-node');
+
         childNodes.forEach(node => {
             const childId = parseInt(node.dataset.nodeId);
             const childContainer = document.getElementById(`children-${childId}`);
+
             if (childContainer) {
                 childContainer.style.display = 'none';
                 window.openOrder = window.openOrder.filter(id => id !== childId);
                 collapseChildren(childId);
             }
         });
+
         drawLinesOnCanvas();
     }
 }
@@ -381,17 +454,29 @@ function setupEventListeners(taskData, isViewMode, isTrainingMode) {
     if (submitButton) {
         const newSubmitButton = submitButton.cloneNode(true);
         submitButton.parentNode.replaceChild(newSubmitButton, submitButton);
+
         if (!isViewMode) {
             newSubmitButton.addEventListener('click', async () => {
                 try {
                     const userSolution = collectSolution();
+                    console.log('COLLECTED USER SOLUTION:', JSON.stringify(userSolution));
+
                     const validation = validateSolution(userSolution, taskData.problem);
+
                     if (!validation.isValid) {
                         alert(validation.message);
                         return;
                     }
+
                     const response = await submitSolution(userSolution, isTrainingMode, taskData);
-                    displaySolutionFeedback({ ...taskData, userSolution, solution: response });
+                    console.log('SERVER CORRECT RESPONSE:', JSON.stringify(response));
+
+                    displaySolutionFeedback({
+                        ...taskData,
+                        userSolution,
+                        solution: response
+                    });
+
                 } catch (error) {
                     const messageElement = document.getElementById('solution-message');
                     messageElement.style.display = 'block';
@@ -406,6 +491,7 @@ function setupEventListeners(taskData, isViewMode, isTrainingMode) {
     if (applySettingsButton && isTrainingMode) {
         const newApplySettingsButton = applySettingsButton.cloneNode(true);
         applySettingsButton.parentNode.replaceChild(newApplySettingsButton, applySettingsButton);
+
         newApplySettingsButton.addEventListener('click', async () => {
             const dimensions = parseInt(document.getElementById('dimensions-input').value);
             const iters = parseInt(document.getElementById('iterations-input').value);
@@ -419,10 +505,13 @@ function setupEventListeners(taskData, isViewMode, isTrainingMode) {
             try {
                 const settings = { dimensions, iters, heuristic };
                 const newTaskData = await fetchTaskData(null, null, false, true, settings);
+
                 window.taskData = newTaskData;
                 window.openOrder = [];
+
                 renderTree(newTaskData.problem, isViewMode);
                 setupEventListeners(newTaskData, isViewMode, isTrainingMode);
+
                 document.getElementById('solution-message').style.display = 'none';
                 displayHeuristicName(heuristic);
             } catch (error) {
@@ -431,28 +520,49 @@ function setupEventListeners(taskData, isViewMode, isTrainingMode) {
         });
     }
 
-    logoutButton.addEventListener('click', e => {
-        e.preventDefault();
-        Logout();
-    });
+    if (logoutButton) {
+        logoutButton.addEventListener('click', e => {
+            e.preventDefault();
+            Logout();
+        });
+    }
 
-    treeContainer.addEventListener('scroll', drawLinesOnCanvas);
+    if (treeContainer) {
+        treeContainer.addEventListener('scroll', drawLinesOnCanvas);
+    }
+
     window.addEventListener('resize', drawLinesOnCanvas);
 }
 
 function validateSolution(userSolution, nodes) {
     const openNodeIds = window.openOrder;
+
     const inputs = document.querySelectorAll('.heuristic-input');
-    const relevantInputs = Array.from(inputs).filter(input => openNodeIds.includes(parseInt(input.dataset.nodeId)));
-    const emptyInputs = relevantInputs.filter(input => !input.value || isNaN(parseInt(input.value)));
+    const relevantInputs = Array.from(inputs).filter(input =>
+        openNodeIds.includes(parseInt(input.dataset.nodeId))
+    );
+
+    const emptyInputs = relevantInputs.filter(input =>
+        !input.value || isNaN(parseInt(input.value))
+    );
+
     if (emptyInputs.length > 0) {
-        return { isValid: false, message: 'Заполните все поля в раскрытых узлах значениями (только натуральные числа).' };
+        return {
+            isValid: false,
+            message: 'Заполните все поля в раскрытых узлах значениями (только натуральные числа).'
+        };
     }
 
     const maxDepth = Math.max(...nodes.map(node => node.depth));
-    const maxOpenedDepth = Math.max(...openNodeIds.map(nodeId => nodes.find(n => n.id === nodeId)?.depth || 0)) + 1;
+    const maxOpenedDepth = Math.max(
+        ...openNodeIds.map(nodeId => nodes.find(n => n.id === nodeId)?.depth || 0)
+    ) + 1;
+
     if (maxOpenedDepth < maxDepth) {
-        return { isValid: false, message: `Раскройте дерево до максимальной глубины (${maxDepth}). Текущая глубина: ${maxOpenedDepth}.` };
+        return {
+            isValid: false,
+            message: `Раскройте дерево до максимальной глубины (${maxDepth}). Текущая глубина: ${maxOpenedDepth}.`
+        };
     }
 
     return { isValid: true, message: '' };
@@ -461,17 +571,22 @@ function validateSolution(userSolution, nodes) {
 function collectSolution() {
     const solution = [];
     const visibleNodes = document.querySelectorAll('.tree-node');
-    
+
     visibleNodes.forEach(node => {
         const nodeId = parseInt(node.dataset.nodeId);
         const levelContainer = node.closest('.tree-level');
+
         if (levelContainer && getComputedStyle(levelContainer).display !== 'none') {
             const nodeSolution = {
                 id: nodeId,
                 g: 0,
                 h: 0,
-                f: 0
+                f: 0,
+                openOrder: window.openOrder.includes(nodeId)
+                    ? window.openOrder.indexOf(nodeId)
+                    : -1
             };
+
             solution.push(nodeSolution);
         }
     });
@@ -480,7 +595,9 @@ function collectSolution() {
         const nodeId = parseInt(input.dataset.nodeId);
         const param = input.dataset.param;
         const value = parseInt(input.value) || 0;
+
         const node = solution.find(s => s.id === nodeId);
+
         if (node) {
             node[param] = value;
         }
@@ -492,109 +609,171 @@ function collectSolution() {
 async function submitSolution(userSolution, isTrainingMode, taskData) {
     const authtoken = Cookies.get('.AspNetCore.Identity.Application');
 
-    let url = isTrainingMode ? `${apiHost}/A/FifteenPuzzle/Train` : `${apiHost}/A/FifteenPuzzle/Test`;
+    let url = isTrainingMode
+        ? `${apiHost}/A/FifteenPuzzle/Train`
+        : `${apiHost}/A/FifteenPuzzle/Test`;
+
     if (isTrainingMode) {
         const heuristic = taskData.settings?.heuristic || 1;
         url += `?heuristic=${heuristic}`;
+        console.log('TRAINING HEURISTIC:', heuristic);
     }
-    const body = isTrainingMode ? JSON.stringify(taskData.problem) : JSON.stringify(userSolution);
 
-    console.log('Отправка решения:', { url, body });
+    const body = isTrainingMode
+        ? JSON.stringify(taskData.problem)
+        : JSON.stringify(userSolution);
 
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${authtoken}`
-            },
-            body
-        });
+    console.log('USER SOLUTION BEFORE POST:', JSON.stringify(userSolution));
+    console.log('POST BODY:', body);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Ошибка при отправке решения: ${response.status} ${errorText}`);
-        }
-        if (response.status === 401) {
-            const refreshtoken = Cookies.get('RefreshToken');
-            if (isTokenExpired(authtoken)) {
-                refreshToken();
-            }
-        }
-        return await response.json();
-    } catch (error) {
-        console.error('Ошибка в submitSolution:', error);
-        throw error;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authtoken}`
+        },
+        body
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ошибка при отправке решения: ${response.status} ${errorText}`);
     }
+
+    return await response.json();
 }
 
 function displaySolutionFeedback(taskData) {
+    console.log('DISPLAY FEEDBACK VERSION 2');
+    console.log('USER SOLUTION:', taskData.userSolution);
+    console.log('CORRECT SOLUTION:', taskData.solution);
+
     const messageElement = document.getElementById('solution-message');
     messageElement.style.display = 'block';
     messageElement.innerHTML = '';
 
     const userSolution = taskData.userSolution || [];
     const correctSolution = taskData.solution || [];
+
     let isCorrect = true;
-    let errorCounts = { h: 0, f: 0, g: 0 };
+
+    let errorCounts = {
+        h: 0,
+        f: 0,
+        g: 0,
+        extraNodes: 0,
+        wrongOrder: 0
+    };
 
     document.querySelectorAll('.heuristic-input').forEach(input => {
         input.classList.remove('error', 'success');
     });
-    document.querySelectorAll('.tree-node').forEach(node => node.classList.remove('correct-node', 'error-node'));
+
+    document.querySelectorAll('.tree-node').forEach(node => {
+        node.classList.remove('correct-node', 'error-node');
+    });
 
     correctSolution.forEach(correctNode => {
-        const nodeElement = document.querySelector(`.tree-node[data-node-id="${correctNode.id}"]`);
-        const userNode = userSolution.find(u => u.id === correctNode.id);
+        const correctNodeId = getNodeId(correctNode);
+        const nodeElement = document.querySelector(`.tree-node[data-node-id="${correctNodeId}"]`);
+        const userNode = userSolution.find(u => Number(getNodeId(u)) === Number(correctNodeId));
 
-        if (nodeElement) {
-            nodeElement.classList.add('correct-node');
-            ['h', 'f', 'g'].forEach(param => {
-                const input = document.querySelector(`.heuristic-input[data-node-id="${correctNode.id}"][data-param="${param}"]`);
-                if (input) {
-                    const correctValue = correctNode[param];
-                    const userValue = userNode ? userNode[param] : 0;
-                    if (parseInt(userValue) === correctValue) {
-                        input.classList.add('success');
-                    } else {
-                        input.classList.add('error');
-                        errorCounts[param]++;
-                        isCorrect = false;
-                    }
-                }
-            });
+        if (!nodeElement) {
+            return;
         }
+
+        nodeElement.classList.add('correct-node');
+
+        const correctOpenOrder = Number(getNodeValue(correctNode, 'openOrder'));
+        const userOpenOrder = userNode ? Number(getNodeValue(userNode, 'openOrder')) : -1;
+        console.log('ORDER CHECK', {
+            nodeId: correctNodeId,
+            correctOpenOrder,
+            userOpenOrder,
+            isExtraOpen: correctOpenOrder < 0 && userOpenOrder >= 0,
+            isWrongOrder: correctOpenOrder >= 0 && userOpenOrder >= 0 && correctOpenOrder !== userOpenOrder
+        });
+
+        if (correctOpenOrder < 0 && userOpenOrder >= 0) {
+            nodeElement.classList.add('error-node');
+            errorCounts.extraNodes++;
+            isCorrect = false;
+        }
+
+        if (correctOpenOrder >= 0 && userOpenOrder >= 0 && correctOpenOrder !== userOpenOrder) {
+            nodeElement.classList.add('error-node');
+            errorCounts.wrongOrder++;
+            isCorrect = false;
+        }
+
+        ['h', 'f', 'g'].forEach(param => {
+            const input = document.querySelector(
+                `.heuristic-input[data-node-id="${correctNodeId}"][data-param="${param}"]`
+            );
+
+            if (!input) {
+                return;
+            }
+
+            // Если узла нет в ответе пользователя, не считаем это ошибкой h/f/g.
+            // Это должна быть отдельная ошибка структуры/стратегии.
+            if (!userNode) {
+                return;
+            }
+
+            const correctValue = getNodeValue(correctNode, param);
+            const userValue = getNodeValue(userNode, param);
+
+            const correctNumber = Number(correctValue);
+            const userNumber = Number(userValue);
+
+            if (
+                !Number.isNaN(correctNumber) &&
+                !Number.isNaN(userNumber) &&
+                userNumber === correctNumber
+            ) {
+                input.classList.add('success');
+            } else {
+                input.classList.add('error');
+                errorCounts[param]++;
+                isCorrect = false;
+            }
+        });
     });
 
     userSolution.forEach(userNode => {
-        const correctNode = correctSolution.find(c => c.id === userNode.id);
-        const nodeElement = document.querySelector(`.tree-node[data-node-id="${userNode.id}"]`);
-        if (!correctNode && nodeElement) {
+        const userNodeId = getNodeId(userNode);
+        const correctNode = correctSolution.find(c => Number(getNodeId(c)) === Number(userNodeId));
+        const nodeElement = document.querySelector(`.tree-node[data-node-id="${userNodeId}"]`);
+        const userOpenOrder = Number(getNodeValue(userNode, 'openOrder'));
+
+        if (!correctNode && nodeElement && userOpenOrder >= 0) {
             nodeElement.classList.add('error-node');
-            ['h', 'f', 'g'].forEach(param => {
-                const input = document.querySelector(`.heuristic-input[data-node-id="${userNode.id}"][data-param="${param}"]`);
-                if (input) {
-                    input.classList.add('error');
-                    errorCounts[param]++;
-                    isCorrect = false;
-                }
-            });
+            errorCounts.extraNodes++;
+            isCorrect = false;
         }
     });
 
     if (isCorrect) {
         messageElement.classList.remove('error');
         messageElement.classList.add('success');
-        messageElement.innerHTML = 'Решение правильное! Все значения верны.';
+        messageElement.innerHTML = 'Решение правильное! Все значения и порядок раскрытия верны.';
     } else {
         messageElement.classList.remove('success');
         messageElement.classList.add('error');
-        messageElement.innerHTML = `Найдены ошибки: ${errorCounts.h} неверных значений h, ${errorCounts.f} неверных значений f, ${errorCounts.g} неверных значений g.`;
+
+        messageElement.innerHTML =
+            `Найдены ошибки: ${errorCounts.h} неверных значений h, ` +
+            `${errorCounts.f} неверных значений f, ` +
+            `${errorCounts.g} неверных значений g, ` +
+            `${errorCounts.extraNodes} лишних раскрытых узлов, ` +
+            `${errorCounts.wrongOrder} ошибок порядка раскрытия.`;
     }
 }
 
 async function Logout() {
     const authtoken = Cookies.get('.AspNetCore.Identity.Application');
+
     const response = await fetch(`${apiHost}/Users/Logout`, {
         method: 'POST',
         headers: {
@@ -606,6 +785,7 @@ async function Logout() {
         sessionStorage.removeItem('userFullName');
         window.location.href = "/LoginPage/LoginPage.html";
     }
+
     if (response.status === 401) {
         const refreshtoken = Cookies.get('RefreshToken');
         if (isTokenExpired(authtoken)) {
@@ -620,8 +800,12 @@ function drawLinesOnCanvas() {
         console.error('Canvas не найден');
         return;
     }
+
     const ctx = canvas.getContext('2d');
     const treeContainer = document.getElementById('tree-container');
+
+    if (!treeContainer) return;
+
     const containerRect = treeContainer.getBoundingClientRect();
 
     canvas.width = treeContainer.scrollWidth;
@@ -635,6 +819,7 @@ function drawLinesOnCanvas() {
 
     window.lines.forEach(line => {
         const childrenContainer = document.getElementById(line.containerId);
+
         if (childrenContainer && childrenContainer.style.display === 'inline-flex') {
             const startRect = line.start.getBoundingClientRect();
             const endRect = line.end.getBoundingClientRect();

@@ -65,10 +65,10 @@ namespace AICourseTester.Data
                 .HasForeignKey(e => e.AlphaBetaId)
                 .OnDelete(DeleteBehavior.Cascade);
 			modelBuilder.Entity<ErrorRecord>()
-	            .HasOne(e => e.AlphaBeta)
-	            .WithMany(a => a.Errors)
-	            .HasForeignKey(e => e.AlphaBetaId)
-	            .OnDelete(DeleteBehavior.Cascade);
+				.HasOne(e => e.FifteenPuzzle)
+				.WithMany()
+				.HasForeignKey(e => e.FifteenPuzzleId)
+				.OnDelete(DeleteBehavior.Cascade);
 			modelBuilder.Entity<ErrorRecord>()
 				.HasOne(e => e.ErrorType)
 				.WithMany(t => t.Errors)
@@ -80,30 +80,32 @@ namespace AICourseTester.Data
 				.WithMany(et => et.ErrorTypeAspects)
 				.HasForeignKey(eta => eta.ErrorTypeId)
 				.OnDelete(DeleteBehavior.Cascade);
-
 			modelBuilder.Entity<ErrorTypeAspect>()
 				.HasOne(eta => eta.KnowledgeAspect)
 				.WithMany(ka => ka.ErrorTypeAspects)
 				.HasForeignKey(eta => eta.KnowledgeAspectId)
 				.OnDelete(DeleteBehavior.Cascade);
+
 			modelBuilder.Entity<KnowledgeGap>()
 	            .HasOne(g => g.User)
 	            .WithMany()
 	            .HasForeignKey(g => g.UserId)
 	            .OnDelete(DeleteBehavior.Cascade);
-
 			modelBuilder.Entity<KnowledgeGap>()
 				.HasOne(g => g.AlphaBeta)
 				.WithMany()
 				.HasForeignKey(g => g.AlphaBetaId)
 				.OnDelete(DeleteBehavior.Cascade);
-
+			modelBuilder.Entity<KnowledgeGap>()
+				.HasOne(g => g.FifteenPuzzle)
+				.WithMany()
+				.HasForeignKey(g => g.FifteenPuzzleId)
+				.OnDelete(DeleteBehavior.Cascade);
 			modelBuilder.Entity<KnowledgeGap>()
 				.HasOne(g => g.KnowledgeAspect)
 				.WithMany()
 				.HasForeignKey(g => g.KnowledgeAspectId)
 				.OnDelete(DeleteBehavior.Cascade);
-
 		}
     }
 }

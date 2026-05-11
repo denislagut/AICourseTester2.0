@@ -7,10 +7,16 @@ namespace AICourseTester.Models
 	{
 		public int Id { get; set; }
 
-		[Required]
-		public int AlphaBetaId { get; set; }
+		[MaxLength(64)]
+		public string TaskType { get; set; } = "AlphaBeta";
 
-		public AlphaBeta AlphaBeta { get; set; } = null!;
+		public int? FifteenPuzzleId { get; set; }
+
+		public FifteenPuzzle? FifteenPuzzle { get; set; }
+
+		public int? AlphaBetaId { get; set; }
+
+		public AlphaBeta? AlphaBeta { get; set; } = null!;
 
 		[Required]
 		[MaxLength(64)]

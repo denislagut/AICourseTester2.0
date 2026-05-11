@@ -148,7 +148,9 @@ builder.Services.AddRateLimiter(options =>
     );
 });
 
+builder.Services.AddScoped<ITaskAnalysisPipelineService, TaskAnalysisPipelineService>();
 builder.Services.AddScoped<IAlphaBetaErrorAnalysisService, AlphaBetaErrorAnalysisService>();
+builder.Services.AddScoped<IFifteenPuzzleErrorAnalysisService, FifteenPuzzleErrorAnalysisService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 builder.Services.AddScoped<IKnowledgeGapDetectionService, KnowledgeGapDetectionService>();
 

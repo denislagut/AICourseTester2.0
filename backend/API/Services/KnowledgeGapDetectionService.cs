@@ -25,27 +25,13 @@ namespace AICourseTester.Services
 			};
 		}
 
-		public async Task<List<KnowledgeGap>> DetectForAlphaBetaAsync(int alphaBetaId, string userId)
+		private List<KnowledgeGap> BuildGapsFromErrors(
+		List<ErrorRecord> errors,
+		string userId,
+		string taskType,
+		int? alphaBetaId,
+		int? fifteenPuzzleId)
 		{
-			var errors = await _context.ErrorRecords
-				.Where(e => e.AlphaBetaId == alphaBetaId && e.ErrorTypeId != null)
-				.Include(e => e.ErrorType)
-					.ThenInclude(t => t!.ErrorTypeAspects)
-						.ThenInclude(eta => eta.KnowledgeAspect)
-				.ToListAsync();
-
-			var oldGaps = await _context.KnowledgeGaps
-				.Where(g => g.AlphaBetaId == alphaBetaId)
-				.ToListAsync();
-
-			_context.KnowledgeGaps.RemoveRange(oldGaps);
-
-			if (errors.Count == 0)
-			{
-				await _context.SaveChangesAsync();
-				return new List<KnowledgeGap>();
-			}
-
 			var aspectStats = new Dictionary<int, AspectStat>();
 
 			foreach (var error in errors)
@@ -68,7 +54,6 @@ namespace AICourseTester.Services
 					}
 
 					var stat = aspectStats[aspect.Id];
-
 					var patternMultiplier = GetPatternMultiplier(error.PatternType);
 
 					stat.ErrorCount += 1;
@@ -78,7 +63,7 @@ namespace AICourseTester.Services
 				}
 			}
 
-			var gaps = aspectStats.Values
+			return aspectStats.Values
 				.Select(stat =>
 				{
 					var averageSeverity = stat.ErrorCount == 0
@@ -93,7 +78,11 @@ namespace AICourseTester.Services
 					return new KnowledgeGap
 					{
 						UserId = userId,
+						TaskType = taskType,
+
 						AlphaBetaId = alphaBetaId,
+						FifteenPuzzleId = fifteenPuzzleId,
+
 						KnowledgeAspectId = stat.KnowledgeAspectId,
 						ErrorCount = stat.ErrorCount,
 						TotalWeight = stat.TotalWeight,
@@ -105,11 +94,6 @@ namespace AICourseTester.Services
 				})
 				.Where(g => g.GapScore > 0)
 				.ToList();
-
-			await _context.KnowledgeGaps.AddRangeAsync(gaps);
-			await _context.SaveChangesAsync();
-
-			return gaps;
 		}
 
 		private static double CalculateGapScore(
@@ -124,6 +108,76 @@ namespace AICourseTester.Services
 			var severityFactor = Math.Min(weightedSeverity, 10) / 10.0;
 
 			return Math.Round((countFactor * 0.35 + weightFactor * 0.25 + severityFactor * 0.40) * 100, 2);
+		}
+
+		public async Task<List<KnowledgeGap>> DetectForAlphaBetaAsync(int alphaBetaId, string userId)
+		{
+			var errors = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == alphaBetaId && e.ErrorTypeId != null)
+				.Include(e => e.ErrorType)
+					.ThenInclude(t => t!.ErrorTypeAspects)
+						.ThenInclude(eta => eta.KnowledgeAspect)
+				.ToListAsync();
+
+			var oldGaps = await _context.KnowledgeGaps
+				.Where(g => g.AlphaBetaId == alphaBetaId)
+				.ToListAsync();
+
+			_context.KnowledgeGaps.RemoveRange(oldGaps);
+
+			if (errors.Count == 0)
+			{
+				await _context.SaveChangesAsync();
+				return new List<KnowledgeGap>();
+			}
+
+			var gaps = BuildGapsFromErrors(
+			errors,
+			userId,
+			taskType: "AlphaBeta",
+			alphaBetaId: alphaBetaId,
+			fifteenPuzzleId: null);
+
+			await _context.KnowledgeGaps.AddRangeAsync(gaps);
+			await _context.SaveChangesAsync();
+
+			return gaps;
+		}
+
+		public async Task<List<KnowledgeGap>> DetectForFifteenPuzzleAsync(int fifteenPuzzleId, string userId)
+		{
+			var errors = await _context.ErrorRecords
+				.Where(e => e.TaskType == "FifteenPuzzle" &&
+							e.FifteenPuzzleId == fifteenPuzzleId &&
+							e.ErrorTypeId != null)
+				.Include(e => e.ErrorType)
+					.ThenInclude(t => t!.ErrorTypeAspects)
+						.ThenInclude(eta => eta.KnowledgeAspect)
+				.ToListAsync();
+
+			var oldGaps = await _context.KnowledgeGaps
+				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fifteenPuzzleId)
+				.ToListAsync();
+
+			_context.KnowledgeGaps.RemoveRange(oldGaps);
+
+			if (errors.Count == 0)
+			{
+				await _context.SaveChangesAsync();
+				return new List<KnowledgeGap>();
+			}
+
+			var gaps = BuildGapsFromErrors(
+				errors,
+				userId,
+				taskType: "FifteenPuzzle",
+				alphaBetaId: null,
+				fifteenPuzzleId: fifteenPuzzleId);
+
+			await _context.KnowledgeGaps.AddRangeAsync(gaps);
+			await _context.SaveChangesAsync();
+
+			return gaps;
 		}
 
 		private static string DetermineLevel(double score)
