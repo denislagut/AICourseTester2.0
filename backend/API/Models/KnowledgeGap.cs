@@ -11,9 +11,16 @@ namespace AICourseTester.Models
 
 		public ApplicationUser User { get; set; } = null!;
 
+		[MaxLength(64)]
+		public string TaskType { get; set; } = "AlphaBeta";
+
 		public int? AlphaBetaId { get; set; }
 
 		public AlphaBeta? AlphaBeta { get; set; }
+
+		public int? FifteenPuzzleId { get; set; }
+
+		public FifteenPuzzle? FifteenPuzzle { get; set; }
 
 		public int KnowledgeAspectId { get; set; }
 

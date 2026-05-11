@@ -1,14 +1,16 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using NuGet.Protocol;
+﻿using AICourseTester.Data;
+using AICourseTester.DTO;
+using AICourseTester.Models;
+using AICourseTester.Models.Analysis;
+using AICourseTester.Services;
+using AICourseTester.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.CodeAnalysis;
-using AICourseTester.Data;
-using AICourseTester.Models;
-using AICourseTester.Services;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using AICourseTester.DTO;
+using Microsoft.CodeAnalysis;
+using Microsoft.EntityFrameworkCore;
+using NuGet.Protocol;
 
 namespace AICourseTester.Controllers
 {
@@ -22,14 +24,30 @@ namespace AICourseTester.Controllers
         private readonly UsersService _usersService;
         private readonly Random _random = new Random();
 
-        public AController(MainDbContext context, UserManager<ApplicationUser> userManager, UsersService usersService)
-        {
-            _userManager = userManager;
-            _context = context;
-            _usersService = usersService;
-        }
+		private readonly ITaskAnalysisPipelineService _taskAnalysisPipelineService;
+		private readonly IFifteenPuzzleErrorAnalysisService _fifteenPuzzleErrorAnalysisService;
+		private readonly IErrorClassificationService _errorClassificationService;
+		private readonly IKnowledgeGapDetectionService _knowledgeGapDetectionService;
 
-        [HttpGet("FifteenPuzzle/Train")]
+		public AController(
+	    MainDbContext context,
+	    UserManager<ApplicationUser> userManager,
+	    UsersService usersService,
+		ITaskAnalysisPipelineService taskAnalysisPipelineService,
+		IFifteenPuzzleErrorAnalysisService fifteenPuzzleErrorAnalysisService,
+	    IErrorClassificationService errorClassificationService,
+	    IKnowledgeGapDetectionService knowledgeGapDetectionService)
+		{
+			_userManager = userManager;
+			_context = context;
+			_usersService = usersService;
+			_taskAnalysisPipelineService = taskAnalysisPipelineService;
+			_fifteenPuzzleErrorAnalysisService = fifteenPuzzleErrorAnalysisService;
+			_errorClassificationService = errorClassificationService;
+			_knowledgeGapDetectionService = knowledgeGapDetectionService;
+		}
+
+		[HttpGet("FifteenPuzzle/Train")]
         public ActionResult<List<ANode>> GetFPTrain(int heuristic = 1, int iters = 3, int dimensions = 3)
         {
             if (heuristic < 1 || heuristic > 2 || iters < 1 || dimensions < 1)
@@ -114,41 +132,124 @@ namespace AICourseTester.Controllers
             }
             var (problemTree, problem) = FifteenPuzzleService.GenerateTree(new ANode() { State = fp.Problem.FromJson<int[][]>() }, fp.TreeHeight);
 
-            fp.UserSolution = userSolution.ToJson();
-            var solution = FifteenPuzzleService.Search(problemTree, FifteenPuzzleService.Heuristics[(int)fp.Heuristic - 1]);
-            fp.Solution = solution.ToJson();
-            fp.IsSolved = true;
+			fp.UserSolution = userSolution.ToJson();
 
-            _context.Fifteens.Update(fp);
-            await _context.SaveChangesAsync();
-            return solution;
-        }
+			var solution = FifteenPuzzleService.Search(
+				problemTree,
+				FifteenPuzzleService.Heuristics[(int)fp.Heuristic - 1]);
 
-        private async Task<bool> _assignTask(string userId, int heuristic, int dimensions, int iters)
-        {
-            if ((await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)) == null)
-            {
-                return false;
-            }
-            var fp = await _context.Fifteens.FirstOrDefaultAsync(f => f.UserId == userId);
-            if (fp == null)
-            {
-                fp = _context.Fifteens.Add(new FifteenPuzzle() { UserId = userId }).Entity;
-                await _context.SaveChangesAsync();
-            }
-            fp.Heuristic = heuristic;
-            fp.Dimensions = dimensions;
-            fp.TreeHeight = iters;
-            fp.UserSolution = null;
-            fp.Solution = null;
-            fp.IsSolved = false;
-            fp.Date = DateTime.Now;
-            
-            _context.Fifteens.Update(fp);
-            return true;
-        }
+			fp.Solution = solution.ToJson();
+			fp.IsSolved = true;
 
-        [DisableRateLimiting]
+			_context.Fifteens.Update(fp);
+			await _context.SaveChangesAsync();
+
+			await _taskAnalysisPipelineService.AnalyzeFifteenPuzzleAsync(
+	            fp.Id,
+	            fp.UserId,
+	            userSolution,
+	            solution,
+	            (int)fp.Heuristic);
+
+			return solution;
+		}
+
+		[Authorize, HttpGet("FifteenPuzzle/Test/Errors")]
+		public async Task<ActionResult<List<ErrorRecord>>> GetFPTestErrors()
+		{
+			var fp = await _context.Fifteens
+				.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+
+			if (fp == null)
+			{
+				return NotFound();
+			}
+
+			var errors = await _context.ErrorRecords
+				.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fp.Id)
+				.OrderBy(e => e.Id)
+				.ToListAsync();
+
+			return Ok(errors);
+		}
+
+		[Authorize, HttpGet("FifteenPuzzle/Test/KnowledgeGaps")]
+		public async Task<ActionResult<List<object>>> GetFPTestKnowledgeGaps()
+		{
+			var fp = await _context.Fifteens
+				.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+
+			if (fp == null)
+			{
+				return NotFound();
+			}
+
+			var gaps = await _context.KnowledgeGaps
+				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fp.Id)
+				.Include(g => g.KnowledgeAspect)
+				.OrderByDescending(g => g.GapScore)
+				.Select(g => new
+				{
+					g.Id,
+					g.KnowledgeAspectId,
+					AspectName = g.KnowledgeAspect.Name,
+					AspectDescription = g.KnowledgeAspect.Description,
+					g.ErrorCount,
+					g.TotalWeight,
+					g.AverageSeverity,
+					g.GapScore,
+					g.Level,
+					g.CreatedAt
+				})
+				.ToListAsync<object>();
+
+			return Ok(gaps);
+		}
+
+		private async Task<bool> _assignTask(string userId, int heuristic, int dimensions, int iters)
+		{
+			if ((await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)) == null)
+			{
+				return false;
+			}
+
+			var fp = await _context.Fifteens.FirstOrDefaultAsync(f => f.UserId == userId);
+
+			if (fp == null)
+			{
+				fp = _context.Fifteens.Add(new FifteenPuzzle() { UserId = userId }).Entity;
+				await _context.SaveChangesAsync();
+			}
+			else
+			{
+				var oldErrors = await _context.ErrorRecords
+					.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fp.Id)
+					.ToListAsync();
+
+				_context.ErrorRecords.RemoveRange(oldErrors);
+
+				var oldGaps = await _context.KnowledgeGaps
+					.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fp.Id)
+					.ToListAsync();
+
+				_context.KnowledgeGaps.RemoveRange(oldGaps);
+			}
+
+			fp.Heuristic = heuristic;
+			fp.Dimensions = dimensions;
+			fp.TreeHeight = iters;
+
+			fp.Problem = null;
+			fp.UserSolution = null;
+			fp.Solution = null;
+			fp.IsSolved = false;
+			fp.Date = DateTime.Now;
+
+			_context.Fifteens.Update(fp);
+			return true;
+		}
+
+		[DisableRateLimiting]
         [Authorize(Roles = "Administrator"), HttpPost("FifteenPuzzle/Users/Assign")]
         public async Task<ActionResult> PostFPTestAssign(string[] userIds, int dimensions = 3, int iters = 3, int heuristic = 1)
         {

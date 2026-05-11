@@ -22,72 +22,21 @@ namespace AICourseTester.Controllers
         private readonly MainDbContext _context;
         private readonly UsersService _usersService;
 
+		private readonly ITaskAnalysisPipelineService _taskAnalysisPipelineService;
 		private readonly IAlphaBetaErrorAnalysisService _errorAnalysisService;
-		private readonly IErrorClassificationService _errorClassificationService;
-		private readonly IKnowledgeGapDetectionService _knowledgeGapDetectionService;
 
 		public ABController(
-			MainDbContext context,
-			UserManager<ApplicationUser> userManager,
-			UsersService usersService,
-			IAlphaBetaErrorAnalysisService errorAnalysisService,
-			IErrorClassificationService errorClassificationService,
-			IKnowledgeGapDetectionService knowledgeGapDetectionService)
+		MainDbContext context,
+		UserManager<ApplicationUser> userManager,
+		UsersService usersService,
+		IAlphaBetaErrorAnalysisService errorAnalysisService,
+		ITaskAnalysisPipelineService taskAnalysisPipelineService)
 		{
 			_userManager = userManager;
 			_context = context;
 			_usersService = usersService;
 			_errorAnalysisService = errorAnalysisService;
-			_errorClassificationService = errorClassificationService;
-			_knowledgeGapDetectionService = knowledgeGapDetectionService;
-		}
-
-		private async Task SaveAnalysisErrorsAsync(int alphaBetaId, ErrorAnalysisResult analysisResult)
-		{
-			var oldErrors = await _context.ErrorRecords
-				.Where(e => e.AlphaBetaId == alphaBetaId)
-				.ToListAsync();
-
-			if (oldErrors.Count > 0)
-			{
-				_context.ErrorRecords.RemoveRange(oldErrors);
-			}
-
-			if (analysisResult.Errors.Count == 0)
-			{
-				return;
-			}
-
-			var errorEntities = analysisResult.Errors.Select(error => new ErrorRecord
-			{
-				AlphaBetaId = alphaBetaId,
-				Code = error.Code,
-				Message = error.Message,
-				NodeId = error.NodeId,
-				TreeLevel = error.TreeLevel,
-				ElementType = error.ElementType,
-				ExpectedA = error.ExpectedA,
-				ActualA = error.ActualA,
-				ExpectedB = error.ExpectedB,
-				ActualB = error.ActualB,
-				PathStepIndex = error.PathStepIndex,
-				ExpectedPathNodeId = error.ExpectedPathNodeId,
-				ActualPathNodeId = error.ActualPathNodeId,
-				IsPrimary = error.IsPrimary,
-				SeverityScore = error.SeverityScore,
-				GroupKey = error.GroupKey,
-				RootBranchId = error.RootBranchId,
-				IsOnCorrectPath = error.IsOnCorrectPath,
-				IsUserPruned = error.IsUserPruned,
-				IsExpectedPruned = error.IsExpectedPruned,
-				PatternType = error.PatternType,
-				SimilarErrorCount = error.SimilarErrorCount,
-				SimilarOpportunityCount = error.SimilarOpportunityCount,
-				SimilarErrorRatio = error.SimilarErrorRatio,
-				CreatedAt = DateTime.UtcNow
-			}).ToList();
-
-			await _context.ErrorRecords.AddRangeAsync(errorEntities);
+			_taskAnalysisPipelineService = taskAnalysisPipelineService;
 		}
 
 		[HttpGet("Train")]
@@ -173,16 +122,15 @@ namespace AICourseTester.Controllers
 			ab.Path = solution.Path.ToJson();
 			ab.IsSolved = true;
 
-			var analysisResult = _errorAnalysisService.Analyze(problem, userSolution, solution);
-
-			await SaveAnalysisErrorsAsync(ab.Id, analysisResult);
-
 			_context.AlphaBeta.Update(ab);
 			await _context.SaveChangesAsync();
 
-			await _errorClassificationService.ClassifyErrorsAsync(ab.Id);
-
-			await _knowledgeGapDetectionService.DetectForAlphaBetaAsync(ab.Id, ab.UserId);
+			await _taskAnalysisPipelineService.AnalyzeAlphaBetaAsync(
+				ab.Id,
+				ab.UserId,
+				problem,
+				userSolution,
+				solution);
 
 			return solution;
 		}
