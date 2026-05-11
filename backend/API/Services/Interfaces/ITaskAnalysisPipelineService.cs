@@ -6,14 +6,14 @@ namespace AICourseTester.Services.Interfaces
 {
 	public interface ITaskAnalysisPipelineService
 	{
-		Task<ErrorAnalysisResult> AnalyzeFifteenPuzzleAsync(
+		Task<ITaskAnalysisResult> AnalyzeFifteenPuzzleAsync(
 			int fifteenPuzzleId,
 			string userId,
 			List<ANodeDTO> userSolution,
 			List<ANodeDTO> correctSolution,
 			int heuristic);
 
-		Task<ErrorAnalysisResult> AnalyzeAlphaBetaAsync(
+		Task<ITaskAnalysisResult> AnalyzeAlphaBetaAsync(
 			int alphaBetaId,
 			string userId,
 			ProblemTree<ABNode> problem,

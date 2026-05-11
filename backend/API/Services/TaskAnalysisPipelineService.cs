@@ -29,7 +29,7 @@ namespace AICourseTester.Services
 			_knowledgeGapDetectionService = knowledgeGapDetectionService;
 		}
 
-		public async Task<ErrorAnalysisResult> AnalyzeFifteenPuzzleAsync(
+		public async Task<ITaskAnalysisResult> AnalyzeFifteenPuzzleAsync(
 			int fifteenPuzzleId,
 			string userId,
 			List<ANodeDTO> userSolution,
@@ -56,7 +56,7 @@ namespace AICourseTester.Services
 			return analysisResult;
 		}
 
-		public async Task<ErrorAnalysisResult> AnalyzeAlphaBetaAsync(
+		public async Task<ITaskAnalysisResult> AnalyzeAlphaBetaAsync(
 			int alphaBetaId,
 			string userId,
 			ProblemTree<ABNode> problem,
@@ -87,7 +87,7 @@ namespace AICourseTester.Services
 			string taskType,
 			int? alphaBetaId,
 			int? fifteenPuzzleId,
-			ErrorAnalysisResult analysisResult)
+			ITaskAnalysisResult analysisResult)
 		{
 			var oldErrorsQuery = _context.ErrorRecords
 				.Where(e => e.TaskType == taskType);
