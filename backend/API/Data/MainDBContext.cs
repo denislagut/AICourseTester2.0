@@ -1,6 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using AICourseTester.Models;
+using AICourseTester.Models.Analysis;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
-using AICourseTester.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace AICourseTester.Data
 {
@@ -13,7 +14,8 @@ namespace AICourseTester.Data
         public DbSet<Group> Groups { get; set; } = null!;
         public DbSet<UserGroups> UserGroups { get; set; } = null!;
 
-        public DbSet<ErrorRecord> ErrorRecords { get; set; }
+		public DbSet<CausalErrorLink> CausalErrorLinks { get; set; }
+		public DbSet<ErrorRecord> ErrorRecords { get; set; }
 		public DbSet<ErrorType> ErrorTypes { get; set; }
 		public DbSet<KnowledgeAspect> KnowledgeAspects { get; set; }
 		public DbSet<ErrorTypeAspect> ErrorTypeAspects { get; set; }
@@ -106,6 +108,17 @@ namespace AICourseTester.Data
 				.WithMany()
 				.HasForeignKey(g => g.KnowledgeAspectId)
 				.OnDelete(DeleteBehavior.Cascade);
+
+			modelBuilder.Entity<CausalErrorLink>()
+				.HasOne(x => x.SourceError)
+				.WithMany(x => x.OutgoingLinks)
+				.HasForeignKey(x => x.SourceErrorId)
+				.OnDelete(DeleteBehavior.Restrict);
+			modelBuilder.Entity<CausalErrorLink>()
+				.HasOne(x => x.TargetError)
+				.WithMany(x => x.IncomingLinks)
+				.HasForeignKey(x => x.TargetErrorId)
+				.OnDelete(DeleteBehavior.Restrict);
 		}
     }
 }
