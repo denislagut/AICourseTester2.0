@@ -15,6 +15,8 @@ namespace AICourseTester.Models
 		public string? Problem { get; set; }
 		public string? Solution { get; set; }
 		public string? Path { get; set; }
+
+		public string? UserPrunedNodeIds { get; set; }
 		public string? UserSolution { get; set; }
 		public string? UserPath { get; set; }
 

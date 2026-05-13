@@ -19,14 +19,29 @@ namespace AICourseTester.Services
 			AnalyzeNodes(userSolution, correctSolution, nodeMeta, result);
 			AnalyzePath(userSolution, correctSolution, result);
 			AnalyzePruning(userSolution, correctSolution, nodeMeta, result);
+			AnalyzeSemanticAlphaBetaErrors(problem, userSolution, correctSolution, nodeMeta, result);
 			AnalyzeConsistency(userSolution, correctSolution, nodeMeta, result);
 			AggregatePatterns(result, nodeMeta);
 
 			result.TotalErrors = result.Errors.Count;
-			result.NodeErrorsCount = result.Errors.Count(e => e.Code.StartsWith("NODE"));
-			result.PathErrorsCount = result.Errors.Count(e => e.Code.StartsWith("PATH"));
+			result.NodeErrorsCount = result.Errors.Count(e =>
+				e.Code.StartsWith("NODE") ||
+				e.Code == "MIN_LEVEL_CONFUSION" ||
+				e.Code == "ROOT_MAX_CONFUSION" ||
+				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING");
+			result.PathErrorsCount = result.Errors.Count(e =>
+				e.Code.StartsWith("PATH") ||
+				e.Code == "VALUE_CORRECT_PATH_WRONG" ||
+				e.Code == "PATH_NOT_MAXIMIZING_ROOT_VALUE" ||
+				e.Code == "VALUES_AND_PRUNING_CORRECT_PATH_WRONG");
 			result.PruningRelatedCount = result.Errors.Count(e =>
-				e.Code.StartsWith("PRUN") || e.Code.Contains("PRUNE"));
+				e.Code.StartsWith("PRUN") ||
+				e.Code.Contains("PRUNE") ||
+				e.Code == "EARLY_PRUNING_ERROR" ||
+				e.Code == "MISSED_PRUNING_ERROR" ||
+				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING" ||
+				e.Code == "VALUES_CORRECT_PRUNING_WRONG" ||
+				e.Code == "PRUNING_CORRECT_RESULT_WRONG_REASON");
 
 			return result;
 		}
@@ -71,10 +86,10 @@ namespace AICourseTester.Services
 		}
 
 		private void AnalyzeNodes(
-	AlphaBetaSolutionDTO userSolution,
-	AlphaBetaSolutionDTO correctSolution,
-	Dictionary<int, NodeMeta> nodeMeta,
-	ErrorAnalysisResult result)
+		AlphaBetaSolutionDTO userSolution,
+		AlphaBetaSolutionDTO correctSolution,
+		Dictionary<int, NodeMeta> nodeMeta,
+		ErrorAnalysisResult result)
 		{
 			var correctNodes = (correctSolution.Nodes ?? new List<ABNodeDTO>())
 				.GroupBy(x => x.Id)
@@ -85,15 +100,20 @@ namespace AICourseTester.Services
 				.GroupBy(x => x.Id)
 				.Select(g => g.First())
 				.ToDictionary(x => x.Id);
+			var userPrunedIds = (userSolution.PrunedNodeIds ?? Array.Empty<int>()).ToHashSet();
 
 			foreach (var correctPair in correctNodes)
 			{
 				var nodeId = correctPair.Key;
 				var expected = correctPair.Value;
 				var meta = nodeMeta.TryGetValue(nodeId, out var m) ? m : null;
-
 				if (!userNodes.TryGetValue(nodeId, out var actual))
 				{
+					if (userPrunedIds.Contains(nodeId))
+					{
+						continue;
+					}
+
 					result.Errors.Add(new AnalyzedError
 					{
 						Code = "NODE_MISSING",
@@ -110,6 +130,7 @@ namespace AICourseTester.Services
 						SeverityScore = 1.0,
 						GroupKey = $"NODE_MISSING_L{meta?.Depth}"
 					});
+
 					continue;
 				}
 
@@ -203,12 +224,23 @@ namespace AICourseTester.Services
 				}
 			}
 
+			var allNodeIds = nodeMeta.Keys.ToHashSet();
+			var correctNodeIds = correctNodes.Keys.ToHashSet();
+			var expectedPrunedNodeIds = allNodeIds.Except(correctNodeIds).ToHashSet();
+
 			foreach (var userPair in userNodes)
 			{
 				if (correctNodes.ContainsKey(userPair.Key))
 					continue;
 
 				var nodeId = userPair.Key;
+
+				// Если узел отсутствует в correctSolution потому что он должен быть отсечён,
+				// не создаём NODE_UNEXPECTED. Это будет обработано как FAILED_TO_PRUNE_NODE
+				// и MISSED_PRUNING_ERROR в pruning-анализе.
+				if (expectedPrunedNodeIds.Contains(nodeId))
+					continue;
+
 				var meta = nodeMeta.TryGetValue(nodeId, out var m) ? m : null;
 
 				result.Errors.Add(new AnalyzedError
@@ -222,7 +254,7 @@ namespace AICourseTester.Services
 					ActualA = userPair.Value.A,
 					ActualB = userPair.Value.B,
 					IsOnCorrectPath = false,
-					IsExpectedPruned = true,
+					IsExpectedPruned = false,
 					IsUserPruned = false,
 					SeverityScore = 1.0,
 					GroupKey = $"NODE_UNEXPECTED_L{meta?.Depth}"
@@ -297,10 +329,10 @@ namespace AICourseTester.Services
 		}
 
 		private void AnalyzePruning(
-	AlphaBetaSolutionDTO userSolution,
-	AlphaBetaSolutionDTO correctSolution,
-	Dictionary<int, NodeMeta> nodeMeta,
-	ErrorAnalysisResult result)
+		AlphaBetaSolutionDTO userSolution,
+		AlphaBetaSolutionDTO correctSolution,
+		Dictionary<int, NodeMeta> nodeMeta,
+		ErrorAnalysisResult result)
 		{
 			var userPrunedNodeIds = (userSolution.PrunedNodeIds ?? Array.Empty<int>()).ToHashSet();
 			var userNodeIds = (userSolution.Nodes ?? new List<ABNodeDTO>()).Select(n => n.Id).ToHashSet();
@@ -402,11 +434,396 @@ namespace AICourseTester.Services
 				}
 			}
 		}
+
+		private void AnalyzeSemanticAlphaBetaErrors(
+		ProblemTree<ABNode> problem,
+		AlphaBetaSolutionDTO userSolution,
+		AlphaBetaSolutionDTO correctSolution,
+		Dictionary<int, NodeMeta> nodeMeta,
+		ErrorAnalysisResult result)
+		{
+			var userNodes = (userSolution.Nodes ?? new List<ABNodeDTO>())
+				.GroupBy(n => n.Id)
+				.Select(g => g.First())
+				.ToDictionary(n => n.Id);
+
+			var correctNodes = (correctSolution.Nodes ?? new List<ABNodeDTO>())
+				.GroupBy(n => n.Id)
+				.Select(g => g.First())
+				.ToDictionary(n => n.Id);
+
+			var userPath = userSolution.Path ?? Array.Empty<int>();
+			var correctPath = correctSolution.Path ?? Array.Empty<int>();
+
+			var userPrunedIds = (userSolution.PrunedNodeIds ?? Array.Empty<int>()).ToHashSet();
+			var allNodeIds = nodeMeta.Keys.ToHashSet();
+			var correctNodeIds = correctNodes.Keys.ToHashSet();
+			var expectedPrunedIds = allNodeIds.Except(correctNodeIds).ToHashSet();
+
+			AnalyzeMinLevelConfusion(problem.Head, userNodes, correctNodes, nodeMeta, result);
+			AnalyzeRootMaxConfusion(problem.Head, userNodes, correctNodes, nodeMeta, result);
+			AnalyzePathNotMaximizingRootValue(userPath, correctPath, userNodes, correctNodes, result);
+			AnalyzePruningTiming(problem.Head, userPrunedIds, expectedPrunedIds, nodeMeta, result);
+			AnalyzeValueAffectedByWrongPruning(problem.Head, userNodes, correctNodes, userPrunedIds, nodeMeta, result);
+			AnalyzeCombinedSemanticCases(result);
+		}
+		private void AnalyzeMinLevelConfusion(
+		ABNode root,
+		Dictionary<int, ABNodeDTO> userNodes,
+		Dictionary<int, ABNodeDTO> correctNodes,
+		Dictionary<int, NodeMeta> nodeMeta,
+		ErrorAnalysisResult result)
+		{
+			if (root.SubNodes == null)
+				return;
+
+			foreach (var minNode in root.SubNodes)
+			{
+				if (minNode.SubNodes == null || minNode.SubNodes.Count == 0)
+					continue;
+
+				if (!userNodes.TryGetValue(minNode.Id, out var userNode))
+					continue;
+
+				if (!correctNodes.TryGetValue(minNode.Id, out var correctNode))
+					continue;
+
+				var leafValues = minNode.SubNodes.Select(x => x.A).ToList();
+
+				if (leafValues.Count == 0)
+					continue;
+
+				var expectedMin = leafValues.Min();
+				var oppositeMax = leafValues.Max();
+
+				// В интерфейсе внутренний MIN-узел обычно заполняется через B
+				if (userNode.B == oppositeMax && correctNode.B == expectedMin && oppositeMax != expectedMin)
+				{
+					var meta = nodeMeta.TryGetValue(minNode.Id, out var m) ? m : null;
+
+					result.Errors.Add(new AnalyzedError
+					{
+						Code = "MIN_LEVEL_CONFUSION",
+						Message = $"В MIN-узле {minNode.Id} выбрано максимальное значение вместо минимального.",
+						NodeId = minNode.Id,
+						TreeLevel = meta?.Depth,
+						RootBranchId = meta?.RootBranchId,
+						ElementType = "InternalNode",
+						ExpectedB = expectedMin,
+						ActualB = userNode.B,
+						SeverityScore = 3.5,
+						GroupKey = "MIN_MAX_CONFUSION"
+					});
+				}
+			}
+		}
+
+		private void AnalyzeRootMaxConfusion(
+			ABNode root,
+			Dictionary<int, ABNodeDTO> userNodes,
+			Dictionary<int, ABNodeDTO> correctNodes,
+			Dictionary<int, NodeMeta> nodeMeta,
+			ErrorAnalysisResult result)
+		{
+			if (root.SubNodes == null || root.SubNodes.Count == 0)
+				return;
+
+			if (!userNodes.TryGetValue(root.Id, out var userRoot))
+				return;
+
+			if (!correctNodes.TryGetValue(root.Id, out var correctRoot))
+				return;
+
+			var minValues = root.SubNodes
+				.Where(n => correctNodes.ContainsKey(n.Id))
+				.Select(n => correctNodes[n.Id].B)
+				.ToList();
+
+			if (minValues.Count == 0)
+				return;
+
+			var expectedMax = minValues.Max();
+			var oppositeMin = minValues.Min();
+
+			if (userRoot.A == oppositeMin && correctRoot.A == expectedMax && oppositeMin != expectedMax)
+			{
+				var meta = nodeMeta.TryGetValue(root.Id, out var m) ? m : null;
+
+				result.Errors.Add(new AnalyzedError
+				{
+					Code = "ROOT_MAX_CONFUSION",
+					Message = "В корне MAX выбрано минимальное значение вместо максимального.",
+					NodeId = root.Id,
+					TreeLevel = meta?.Depth,
+					ElementType = "RootNode",
+					ExpectedA = expectedMax,
+					ActualA = userRoot.A,
+					SeverityScore = 3.5,
+					GroupKey = "MIN_MAX_CONFUSION"
+				});
+			}
+		}
+
+		private void AnalyzePathNotMaximizingRootValue(
+		int[] userPath,
+		int[] correctPath,
+		Dictionary<int, ABNodeDTO> userNodes,
+		Dictionary<int, ABNodeDTO> correctNodes,
+		ErrorAnalysisResult result)
+		{
+			if (userPath.Length == 0 || correctPath.Length == 0)
+				return;
+
+			var userFirstStep = userPath[0];
+			var correctFirstStep = correctPath[0];
+
+			if (userFirstStep == correctFirstStep)
+				return;
+
+			var hasNodeValueErrors = result.Errors.Any(e =>
+				e.Code == "NODE_A_INCORRECT" ||
+				e.Code == "NODE_B_INCORRECT" ||
+				e.Code == "NODE_AB_INCORRECT");
+
+			if (!hasNodeValueErrors)
+			{
+				result.Errors.Add(new AnalyzedError
+				{
+					Code = "VALUE_CORRECT_PATH_WRONG",
+					Message = "Значения узлов рассчитаны верно, но выбран неверный оптимальный путь.",
+					ElementType = "PathStep",
+					PathStepIndex = 0,
+					ExpectedPathNodeId = correctFirstStep,
+					ActualPathNodeId = userFirstStep,
+					SeverityScore = 3.5,
+					GroupKey = "VALUE_CORRECT_PATH_WRONG"
+				});
+			}
+
+			if (correctNodes.TryGetValue(userFirstStep, out var selectedNode) &&
+				correctNodes.TryGetValue(correctFirstStep, out var expectedNode))
+			{
+				if (selectedNode.B < expectedNode.B)
+				{
+					result.Errors.Add(new AnalyzedError
+					{
+						Code = "PATH_NOT_MAXIMIZING_ROOT_VALUE",
+						Message = $"Выбранная ветвь {userFirstStep} не даёт максимального значения корня.",
+						ElementType = "PathStep",
+						PathStepIndex = 0,
+						ExpectedPathNodeId = correctFirstStep,
+						ActualPathNodeId = userFirstStep,
+						ExpectedA = expectedNode.B,
+						ActualA = selectedNode.B,
+						SeverityScore = 3.0,
+						GroupKey = "PATH_NOT_MAXIMIZING_ROOT_VALUE"
+					});
+				}
+			}
+		}
+		private void AnalyzePruningTiming(
+		ABNode root,
+		HashSet<int> userPrunedIds,
+		HashSet<int> expectedPrunedIds,
+		Dictionary<int, NodeMeta> nodeMeta,
+		ErrorAnalysisResult result)
+		{
+			if (root.SubNodes == null)
+				return;
+
+			var alpha = int.MinValue;
+
+			foreach (var minNode in root.SubNodes)
+			{
+				if (minNode.SubNodes == null || minNode.SubNodes.Count == 0)
+					continue;
+
+				var currentMin = int.MaxValue;
+				var pruningAllowedFromThisPoint = false;
+
+				foreach (var leaf in minNode.SubNodes)
+				{
+					currentMin = Math.Min(currentMin, leaf.A);
+
+					var shouldBePruned = expectedPrunedIds.Contains(leaf.Id);
+					var userPruned = userPrunedIds.Contains(leaf.Id);
+
+					// Если пользователь отсёк лист до того, как условие currentMin <= alpha стало возможным
+					if (userPruned && !pruningAllowedFromThisPoint && !shouldBePruned)
+					{
+						var meta = nodeMeta.TryGetValue(leaf.Id, out var m) ? m : null;
+
+						result.Errors.Add(new AnalyzedError
+						{
+							Code = "EARLY_PRUNING_ERROR",
+							Message = $"Лист {leaf.Id} отсечён слишком рано: условие alpha-beta отсечения ещё не было выполнено.",
+							NodeId = leaf.Id,
+							TreeLevel = meta?.Depth,
+							RootBranchId = meta?.RootBranchId,
+							ElementType = "Leaf",
+							IsUserPruned = true,
+							IsExpectedPruned = false,
+							SeverityScore = 3.5,
+							GroupKey = $"EARLY_PRUNING_B{meta?.RootBranchId}"
+						});
+					}
+
+					if (currentMin <= alpha)
+					{
+						pruningAllowedFromThisPoint = true;
+					}
+
+					// Если лист должен быть отсечён, но пользователь его не отсёк
+					if (shouldBePruned && !userPruned)
+					{
+						var meta = nodeMeta.TryGetValue(leaf.Id, out var m) ? m : null;
+
+						result.Errors.Add(new AnalyzedError
+						{
+							Code = "MISSED_PRUNING_ERROR",
+							Message = $"Лист {leaf.Id} должен быть отсечён после выполнения условия alpha-beta отсечения.",
+							NodeId = leaf.Id,
+							TreeLevel = meta?.Depth,
+							RootBranchId = meta?.RootBranchId,
+							ElementType = "Leaf",
+							IsUserPruned = false,
+							IsExpectedPruned = true,
+							SeverityScore = 3.0,
+							GroupKey = $"MISSED_PRUNING_B{meta?.RootBranchId}"
+						});
+					}
+				}
+
+				alpha = Math.Max(alpha, currentMin);
+			}
+		}
+		private void AnalyzeValueAffectedByWrongPruning(
+		ABNode root,
+		Dictionary<int, ABNodeDTO> userNodes,
+		Dictionary<int, ABNodeDTO> correctNodes,
+		HashSet<int> userPrunedIds,
+		Dictionary<int, NodeMeta> nodeMeta,
+		ErrorAnalysisResult result)
+		{
+			if (root.SubNodes == null)
+				return;
+
+			foreach (var minNode in root.SubNodes)
+			{
+				if (minNode.SubNodes == null || minNode.SubNodes.Count == 0)
+					continue;
+
+				if (!userNodes.TryGetValue(minNode.Id, out var userNode))
+					continue;
+
+				if (!correctNodes.TryGetValue(minNode.Id, out var correctNode))
+					continue;
+
+				if (userNode.B == correctNode.B)
+					continue;
+
+				var trueMinLeaf = minNode.SubNodes.MinBy(x => x.A);
+
+				if (trueMinLeaf == null)
+					continue;
+
+				if (userPrunedIds.Contains(trueMinLeaf.Id))
+				{
+					var meta = nodeMeta.TryGetValue(minNode.Id, out var m) ? m : null;
+
+					result.Errors.Add(new AnalyzedError
+					{
+						Code = "VALUE_AFFECTED_BY_WRONG_PRUNING",
+						Message = $"Значение узла {minNode.Id} стало неверным из-за отсечения листа {trueMinLeaf.Id}, влияющего на минимум.",
+						NodeId = minNode.Id,
+						TreeLevel = meta?.Depth,
+						RootBranchId = meta?.RootBranchId,
+						ElementType = "InternalNode",
+						ExpectedB = correctNode.B,
+						ActualB = userNode.B,
+						IsUserPruned = true,
+						SeverityScore = 4.0,
+						GroupKey = $"VALUE_AFFECTED_BY_PRUNING_B{meta?.RootBranchId}"
+					});
+				}
+			}
+		}
+		private void AnalyzeCombinedSemanticCases(ErrorAnalysisResult result)
+		{
+			var hasNodeValueErrors = result.Errors.Any(e =>
+				e.Code == "NODE_A_INCORRECT" ||
+				e.Code == "NODE_B_INCORRECT" ||
+				e.Code == "NODE_AB_INCORRECT" ||
+				e.Code == "MIN_LEVEL_CONFUSION" ||
+				e.Code == "ROOT_MAX_CONFUSION" ||
+				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING");
+
+			var hasPruningErrors = result.Errors.Any(e =>
+				e.Code == "PRUNED_REQUIRED_NODE" ||
+				e.Code == "FAILED_TO_PRUNE_NODE" ||
+				e.Code == "EARLY_PRUNING_ERROR" ||
+				e.Code == "MISSED_PRUNING_ERROR");
+
+			var hasPathErrors = result.Errors.Any(e =>
+				e.Code.StartsWith("PATH") ||
+				e.Code == "VALUE_CORRECT_PATH_WRONG" ||
+				e.Code == "PATH_NOT_MAXIMIZING_ROOT_VALUE");
+
+			if (!hasNodeValueErrors && hasPruningErrors)
+			{
+				result.Errors.Add(new AnalyzedError
+				{
+					Code = "VALUES_CORRECT_PRUNING_WRONG",
+					Message = "Минимаксные значения рассчитаны верно, но отсечения выполнены неправильно.",
+					ElementType = "Pruning",
+					SeverityScore = 3.5,
+					GroupKey = "VALUES_CORRECT_PRUNING_WRONG"
+				});
+			}
+
+			var hasAnyValueErrors = result.Errors.Any(e =>
+				e.Code == "NODE_A_INCORRECT" ||
+				e.Code == "NODE_B_INCORRECT" ||
+				e.Code == "NODE_AB_INCORRECT" ||
+				e.Code == "MIN_LEVEL_CONFUSION" ||
+				e.Code == "ROOT_MAX_CONFUSION" ||
+				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING");
+
+			if (!hasAnyValueErrors && !hasPruningErrors && hasPathErrors)
+			{
+				result.Errors.Add(new AnalyzedError
+				{
+					Code = "VALUES_AND_PRUNING_CORRECT_PATH_WRONG",
+					Message = "Значения и отсечения не содержат ошибок, но оптимальный путь выбран неверно.",
+					ElementType = "PathStep",
+					SeverityScore = 3.0,
+					GroupKey = "VALUES_AND_PRUNING_CORRECT_PATH_WRONG"
+				});
+			}
+
+			var hasDirectPruningErrors = result.Errors.Any(e =>
+				e.Code == "PRUNED_REQUIRED_NODE" ||
+				e.Code == "FAILED_TO_PRUNE_NODE" ||
+				e.Code == "EARLY_PRUNING_ERROR" ||
+				e.Code == "MISSED_PRUNING_ERROR");
+
+			if (!hasNodeValueErrors && !hasPathErrors && hasPruningErrors && !hasDirectPruningErrors)
+			{
+				result.Errors.Add(new AnalyzedError
+				{
+					Code = "PRUNING_CORRECT_RESULT_WRONG_REASON",
+					Message = "Итоговые значения и путь могут быть верными, но логика отсечения применена неверно.",
+					ElementType = "Pruning",
+					SeverityScore = 3.0,
+					GroupKey = "PRUNING_CORRECT_RESULT_WRONG_REASON"
+				});
+			}
+		}
 		private void AnalyzeConsistency(
-	AlphaBetaSolutionDTO userSolution,
-	AlphaBetaSolutionDTO correctSolution,
-	Dictionary<int, NodeMeta> nodeMeta,
-	ErrorAnalysisResult result)
+		AlphaBetaSolutionDTO userSolution,
+		AlphaBetaSolutionDTO correctSolution,
+		Dictionary<int, NodeMeta> nodeMeta,
+		ErrorAnalysisResult result)
 		{
 			var nodeValueErrors = result.Errors.Where(e =>
 				e.Code == "NODE_A_INCORRECT" ||
@@ -453,8 +870,8 @@ namespace AICourseTester.Services
 			}
 		}
 		private void AggregatePatterns(
-	ErrorAnalysisResult result,
-	Dictionary<int, NodeMeta>? nodeMeta = null)
+		ErrorAnalysisResult result,
+		Dictionary<int, NodeMeta>? nodeMeta = null)
 		{
 			if (result.Errors.Count == 0)
 			{
@@ -498,9 +915,9 @@ namespace AICourseTester.Services
 				e.Code.StartsWith("PATH"));
 		}
 		private int EstimateOpportunityCount(
-	string groupKey,
-	List<AnalyzedError> errors,
-	Dictionary<int, NodeMeta>? nodeMeta)
+		string groupKey,
+		List<AnalyzedError> errors,
+		Dictionary<int, NodeMeta>? nodeMeta)
 		{
 			if (nodeMeta == null || nodeMeta.Count == 0)
 			{

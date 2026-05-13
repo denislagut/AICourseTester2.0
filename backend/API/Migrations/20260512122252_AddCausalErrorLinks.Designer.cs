@@ -3,6 +3,7 @@ using System;
 using AICourseTester.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AICourseTester.Migrations
 {
     [DbContext(typeof(MainDbContext))]
-    partial class MainDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260512122252_AddCausalErrorLinks")]
+    partial class AddCausalErrorLinks
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -65,9 +68,6 @@ namespace AICourseTester.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("UserPath")
-                        .HasColumnType("text");
-
-                    b.Property<string>("UserPrunedNodeIds")
                         .HasColumnType("text");
 
                     b.Property<string>("UserSolution")
