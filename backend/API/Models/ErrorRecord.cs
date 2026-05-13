@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using AICourseTester.Models.Analysis;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AICourseTester.Models
@@ -55,6 +56,10 @@ namespace AICourseTester.Models
 		public bool IsOnCorrectPath { get; set; }
 		public bool IsUserPruned { get; set; }
 		public bool IsExpectedPruned { get; set; }
+
+		public ICollection<CausalErrorLink> OutgoingLinks { get; set; } = new List<CausalErrorLink>();
+
+		public ICollection<CausalErrorLink> IncomingLinks { get; set; } = new List<CausalErrorLink>();
 
 		[MaxLength(64)]
 		public string? PatternType { get; set; }

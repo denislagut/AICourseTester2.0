@@ -39,6 +39,48 @@ namespace AICourseTester.Controllers
 			_taskAnalysisPipelineService = taskAnalysisPipelineService;
 		}
 
+		[Authorize]
+		[HttpPost("Debug/ResetSolved")]
+		public async Task<ActionResult> DebugResetSolved()
+		{
+			var userId = _userManager.GetUserId(User);
+
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(x => x.UserId == userId);
+
+			if (ab == null)
+				return NotFound();
+
+			ab.IsSolved = false;
+			ab.UserSolution = null;
+			ab.UserPath = null;
+			ab.UserPrunedNodeIds = null;
+
+			await _context.SaveChangesAsync();
+
+			return Ok();
+		}
+
+		[Authorize]
+		[HttpPost("Debug/AssignMe")]
+		public async Task<ActionResult> DebugAssignMe(int treeHeight = 3, int max = 15, int template = 1)
+		{
+			var userId = _userManager.GetUserId(User);
+
+			if (userId == null)
+			{
+				return Unauthorized();
+			}
+
+			if (await _assignTask(userId, treeHeight, max, template))
+			{
+				await _context.SaveChangesAsync();
+				return Ok();
+			}
+
+			return NotFound();
+		}
+
 		[HttpGet("Train")]
         public ActionResult<ProblemTree<ABNode>> GetABTrain(int depth = 3, int max = 15, int template = 1)
         {
@@ -114,6 +156,7 @@ namespace AICourseTester.Controllers
 
 			ab.UserSolution = userSolution.Nodes.ToJson();
 			ab.UserPath = userSolution.Path.ToJson();
+			ab.UserPrunedNodeIds = userSolution.PrunedNodeIds.ToJson();
 
 			var problem = ab.Problem.FromJson<ProblemTree<ABNode>>();
 			var solution = AlphaBetaService.Search(problem);

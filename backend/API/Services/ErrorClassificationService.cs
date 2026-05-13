@@ -8,6 +8,65 @@ namespace AICourseTester.Services
 	public class ErrorClassificationService : IErrorClassificationService
 	{
 		private readonly MainDbContext _context;
+		private bool IsMinLevel(int level)
+		{
+			return level % 2 == 1;
+		}
+		private static string GetErrorCategory(string code)
+		{
+			if (code.StartsWith("NODE") ||
+				code == "MIN_LEVEL_CONFUSION" ||
+				code == "ROOT_MAX_CONFUSION" ||
+				code == "H_INCORRECT" ||
+				code == "G_INCORRECT" ||
+				code == "F_INCORRECT" ||
+				code == "F_FORMULA_INCONSISTENCY" ||
+				code == "F_DERIVED_FROM_INCORRECT_COMPONENTS")
+			{
+				return "Calculation";
+			}
+
+			if (code.StartsWith("PATH") ||
+				code == "VALUE_CORRECT_PATH_WRONG" ||
+				code == "PATH_NOT_MAXIMIZING_ROOT_VALUE" ||
+				code == "OPEN_ORDER_INCORRECT" ||
+				code == "NODE_EXPANSION_ORDER_ERROR")
+			{
+				return "Strategy";
+			}
+
+			if (code.Contains("PRUNE") ||
+				code.Contains("PRUNING") ||
+				code == "EARLY_PRUNING_ERROR" ||
+				code == "MISSED_PRUNING_ERROR" ||
+				code == "VALUE_AFFECTED_BY_WRONG_PRUNING")
+			{
+				return "Pruning";
+			}
+
+			if (code.Contains("CONSISTENCY") ||
+				code == "VALUE_PATH_INCONSISTENCY" ||
+				code == "VALUE_PRUNING_INCONSISTENCY")
+			{
+				return "Consistency";
+			}
+
+			return "General";
+		}
+
+		private static string GetSeverityLevel(double severity)
+		{
+			if (severity >= 4.0)
+				return "Critical";
+
+			if (severity >= 3.0)
+				return "High";
+
+			if (severity >= 2.0)
+				return "Medium";
+
+			return "Low";
+		}
 
 		public ErrorClassificationService(MainDbContext context)
 		{
@@ -50,8 +109,6 @@ namespace AICourseTester.Services
 				e.Code == "NODE_AB_INCORRECT");
 
 			var hasPathErrors = errors.Any(e => e.Code.StartsWith("PATH"));
-			var hasPruningErrors = errors.Any(e =>
-				e.Code.StartsWith("PRUN") || e.Code.Contains("PRUNE"));
 
 			// 1. Путь неверен, но значения в целом верны
 			if (hasPathErrors && !hasValueErrors)
@@ -65,6 +122,9 @@ namespace AICourseTester.Services
 			}
 
 			// 2. Есть конфликт пути и pruning
+			// Конфликт пути и отсечения:
+			// путь пользователя проходит через ветвь, которую он сам отметил как отсечённую.
+			// Это не просто ошибка pruning, а противоречие между двумя частями решения.
 			if (errors.Any(e =>
 				e.Code == "PATH_THROUGH_PRUNED_BRANCH" ||
 				e.Code == "PRUNING_PATH_INCONSISTENCY"))
@@ -99,10 +159,7 @@ namespace AICourseTester.Services
 			// 4. Если pruning-ошибки сконцентрированы в одном поддереве,
 			// усиливаем их как boundary error
 			var groupedByBranch = errors
-				.Where(e => e.RootBranchId.HasValue &&
-							(e.Code == "PROCESSED_PRUNED_NODE" ||
-							 e.Code == "FAILED_TO_PRUNE_NODE" ||
-							 e.Code == "PRUNED_REQUIRED_NODE"))
+				.Where(e => e.RootBranchId.HasValue && (e.Code == "PROCESSED_PRUNED_NODE"))
 				.GroupBy(e => e.RootBranchId!.Value);
 
 			var boundaryType = errorTypes.FirstOrDefault(t => t.Code == "PRUNING_BOUNDARY_ERROR");
@@ -120,9 +177,9 @@ namespace AICourseTester.Services
 		}
 
 		private ErrorType? MatchFifteenPuzzleErrorType(
-	ErrorRecord error,
-	List<ErrorRecord> allErrors,
-	List<ErrorType> errorTypes)
+		ErrorRecord error,
+		List<ErrorRecord> allErrors,
+		List<ErrorType> errorTypes)
 		{
 			if (error.Code == "H_INCORRECT")
 			{
@@ -214,7 +271,7 @@ namespace AICourseTester.Services
 					// В вашей задаче можно договориться:
 					// четный/нечетный уровень интерпретировать как MAX/MIN
 					// в зависимости от дерева и корня
-					if (error.TreeLevel.Value % 2 == 1)
+					if (IsMinLevel(error.TreeLevel.Value))
 					{
 						return errorTypes.FirstOrDefault(t => t.Code == "MIN_LEVEL_AGGREGATION_ERROR");
 					}
@@ -246,13 +303,6 @@ namespace AICourseTester.Services
 				return errorTypes.FirstOrDefault(t => t.Code == "OPTIMAL_PATH_SELECTION_ERROR");
 			}
 
-			// 3. Ошибки pruning — решение об отсечении
-			if (error.Code == "PRUNED_REQUIRED_NODE" ||
-				error.Code == "FAILED_TO_PRUNE_NODE")
-			{
-				return errorTypes.FirstOrDefault(t => t.Code == "PRUNING_DECISION_ERROR");
-			}
-
 			// 4. Ошибки pruning — границы отсечения
 			if (error.Code == "OVER_PRUNING_SUBTREE" ||
 				error.Code == "UNDER_PRUNING_SUBTREE" ||
@@ -280,6 +330,44 @@ namespace AICourseTester.Services
 				error.Code == "NODE_UNEXPECTED")
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "TREE_STRUCTURE_PROCESSING_ERROR");
+			}
+
+			if (error.Code == "MIN_LEVEL_CONFUSION" || error.Code == "ROOT_MAX_CONFUSION")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "MIN_MAX_ROLE_CONFUSION_ERROR");
+			}
+
+			if (error.Code == "VALUE_CORRECT_PATH_WRONG" ||
+			error.Code == "PATH_NOT_MAXIMIZING_ROOT_VALUE" ||
+			error.Code == "VALUES_AND_PRUNING_CORRECT_PATH_WRONG")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "OPTIMAL_PATH_SELECTION_ERROR");
+			}
+
+			if (error.Code == "EARLY_PRUNING_ERROR" ||
+				error.Code == "PRUNED_REQUIRED_NODE")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "EARLY_PRUNING_ERROR_TYPE");
+			}
+
+			if (error.Code == "MISSED_PRUNING_ERROR" ||
+				error.Code == "FAILED_TO_PRUNE_NODE")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "MISSED_PRUNING_ERROR_TYPE");
+			}
+
+			if (error.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "VALUE_PRUNING_DEPENDENCY_ERROR");
+			}
+
+			// Ошибка логики alpha-beta:
+			// значения и путь могут быть корректными, но сами отсечения выполнены неверно.
+			// Используется для отделения понимания минимакса от понимания pruning.
+			if (error.Code == "VALUES_CORRECT_PRUNING_WRONG" ||
+				error.Code == "PRUNING_CORRECT_RESULT_WRONG_REASON")
+			{
+				return errorTypes.FirstOrDefault(t => t.Code == "PRUNING_LOGIC_ERROR");
 			}
 
 			// 8. Резерв
@@ -325,13 +413,6 @@ namespace AICourseTester.Services
 			Name = "Ошибка согласованности пути и значений",
 			Description = "Выбранный путь не соответствует рассчитанным значениям.",
 			DefaultSeverity = 3.0
-		},
-		new ErrorType
-		{
-			Code = "PRUNING_DECISION_ERROR",
-			Name = "Ошибка принятия решения об отсечении",
-			Description = "Отсечение выполнено или пропущено в неверном месте.",
-			DefaultSeverity = 3.5
 		},
 		new ErrorType
 		{
@@ -430,8 +511,43 @@ namespace AICourseTester.Services
 			Name = "Производная ошибка значения",
 			Description = "Значение отличается от эталона как следствие ошибки в другом параметре.",
 			DefaultSeverity = 1.0
-		}
-	};
+		},
+		new ErrorType
+		{
+			Code = "MIN_MAX_ROLE_CONFUSION_ERROR",
+			Name = "Ошибка различения MIN и MAX",
+			Description = "Студент перепутал роли минимизирующего и максимизирующего уровней.",
+			DefaultSeverity = 3.5
+		},
+		new ErrorType
+		{
+			Code = "EARLY_PRUNING_ERROR_TYPE",
+			Name = "Слишком раннее отсечение",
+			Description = "Отсечение выполнено до выполнения условия alpha-beta.",
+			DefaultSeverity = 3.5
+		},
+		new ErrorType
+		{
+			Code = "MISSED_PRUNING_ERROR_TYPE",
+			Name = "Пропущенное отсечение",
+			Description = "Студент не выполнил отсечение после наступления условия alpha-beta.",
+			DefaultSeverity = 3.0
+		},
+		new ErrorType
+		{
+			Code = "VALUE_PRUNING_DEPENDENCY_ERROR",
+			Name = "Ошибка значения из-за неверного отсечения",
+			Description = "Значение узла стало неверным из-за отсечения значимого дочернего узла.",
+			DefaultSeverity = 4.0
+		},
+		new ErrorType
+		{
+			Code = "PRUNING_LOGIC_ERROR",
+			Name = "Ошибка логики alpha-beta отсечения",
+			Description = "Итог решения может быть частично верным, но логика отсечения применена неверно.",
+			DefaultSeverity = 3.5
+		},
+			};
 
 			var existingErrorTypes = await _context.ErrorTypes.ToListAsync();
 
@@ -567,6 +683,7 @@ namespace AICourseTester.Services
 
 			var requiredLinks = new List<(string errorTypeCode, string aspectName, double weight)>
 			{
+
 				("MINIMAX_VALUE_CALCULATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
 				("MIN_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
 				("MAX_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
@@ -575,10 +692,21 @@ namespace AICourseTester.Services
 				("PATH_VALUE_CONSISTENCY_ERROR", "Выбор оптимального хода", 1.0),
 				("PATH_VALUE_CONSISTENCY_ERROR", "Согласованность решения", 0.7),
 
-				("PRUNING_DECISION_ERROR", "Понимание условий альфа-бета отсечения", 1.0),
-
 				("PRUNING_BOUNDARY_ERROR", "Понимание границ действия отсечения", 1.0),
 				("PRUNING_BOUNDARY_ERROR", "Понимание условий альфа-бета отсечения", 0.6),
+
+				("MIN_MAX_ROLE_CONFUSION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
+
+				("EARLY_PRUNING_ERROR_TYPE", "Понимание условий альфа-бета отсечения", 1.0),
+
+				("MISSED_PRUNING_ERROR_TYPE", "Понимание условий альфа-бета отсечения", 0.8),
+				("MISSED_PRUNING_ERROR_TYPE", "Понимание границ действия отсечения", 0.6),
+
+				("VALUE_PRUNING_DEPENDENCY_ERROR", "Понимание условий альфа-бета отсечения", 0.8),
+				("VALUE_PRUNING_DEPENDENCY_ERROR", "Принцип вычисления минимаксных значений", 0.6),
+
+				("PRUNING_LOGIC_ERROR", "Понимание условий альфа-бета отсечения", 1.0),
+				("PRUNING_LOGIC_ERROR", "Согласованность решения", 0.5),
 
 				("PRUNING_PATH_CONFLICT_ERROR", "Понимание границ действия отсечения", 0.8),
 				("PRUNING_PATH_CONFLICT_ERROR", "Согласованность решения", 1.0),

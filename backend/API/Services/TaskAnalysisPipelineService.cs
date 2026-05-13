@@ -2,6 +2,7 @@
 using AICourseTester.DTO;
 using AICourseTester.Models;
 using AICourseTester.Models.Analysis;
+using AICourseTester.Services.Analysis;
 using AICourseTester.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -103,6 +104,15 @@ namespace AICourseTester.Services
 			}
 
 			var oldErrors = await oldErrorsQuery.ToListAsync();
+
+			var oldErrorIds = oldErrors.Select(e => e.Id).ToList();
+
+			var oldLinks = await _context.CausalErrorLinks
+				.Where(l => oldErrorIds.Contains(l.SourceErrorId) ||
+							oldErrorIds.Contains(l.TargetErrorId))
+				.ToListAsync();
+
+			_context.CausalErrorLinks.RemoveRange(oldLinks);
 			_context.ErrorRecords.RemoveRange(oldErrors);
 
 			var errorEntities = analysisResult.Errors.Select(error => new ErrorRecord
@@ -143,6 +153,11 @@ namespace AICourseTester.Services
 			}).ToList();
 
 			await _context.ErrorRecords.AddRangeAsync(errorEntities);
+			await _context.SaveChangesAsync();
+
+			var links = ErrorCausalityBuilder.Build(errorEntities);
+
+			await _context.CausalErrorLinks.AddRangeAsync(links);
 			await _context.SaveChangesAsync();
 		}
 	}
