@@ -11,6 +11,7 @@ namespace AICourseTester.Services
 	public class TaskAnalysisPipelineService : ITaskAnalysisPipelineService
 	{
 		private readonly MainDbContext _context;
+		private readonly IErrorCausalityBuilder _errorCausalityBuilder;
 		private readonly IFifteenPuzzleErrorAnalysisService _fifteenPuzzleErrorAnalysisService;
 		private readonly IAlphaBetaErrorAnalysisService _alphaBetaErrorAnalysisService;
 		private readonly IErrorClassificationService _errorClassificationService;
@@ -18,12 +19,14 @@ namespace AICourseTester.Services
 
 		public TaskAnalysisPipelineService(
 			MainDbContext context,
+			IErrorCausalityBuilder errorCausalityBuilder,
 			IFifteenPuzzleErrorAnalysisService fifteenPuzzleErrorAnalysisService,
 			IAlphaBetaErrorAnalysisService alphaBetaErrorAnalysisService,
 			IErrorClassificationService errorClassificationService,
 			IKnowledgeGapDetectionService knowledgeGapDetectionService)
 		{
 			_context = context;
+			_errorCausalityBuilder = errorCausalityBuilder;
 			_fifteenPuzzleErrorAnalysisService = fifteenPuzzleErrorAnalysisService;
 			_alphaBetaErrorAnalysisService = alphaBetaErrorAnalysisService;
 			_errorClassificationService = errorClassificationService;
@@ -37,24 +40,36 @@ namespace AICourseTester.Services
 			List<ANodeDTO> correctSolution,
 			int heuristic)
 		{
-			var analysisResult = _fifteenPuzzleErrorAnalysisService.Analyze(
-				userSolution,
-				correctSolution,
-				heuristic);
+			await using var transaction = await _context.Database.BeginTransactionAsync();
 
-			await SaveErrorsAsync(
-				taskType: "FifteenPuzzle",
-				alphaBetaId: null,
-				fifteenPuzzleId: fifteenPuzzleId,
-				analysisResult: analysisResult);
+			try
+			{
+				var analysisResult = _fifteenPuzzleErrorAnalysisService.Analyze(
+					userSolution,
+					correctSolution,
+					heuristic);
 
-			await _errorClassificationService.ClassifyFifteenPuzzleErrorsAsync(fifteenPuzzleId);
+				await SaveErrorsAsync(
+					taskType: "FifteenPuzzle",
+					alphaBetaId: null,
+					fifteenPuzzleId: fifteenPuzzleId,
+					analysisResult: analysisResult);
 
-			await _knowledgeGapDetectionService.DetectForFifteenPuzzleAsync(
-				fifteenPuzzleId,
-				userId);
+				await _errorClassificationService.ClassifyFifteenPuzzleErrorsAsync(fifteenPuzzleId);
 
-			return analysisResult;
+				await _knowledgeGapDetectionService.DetectForFifteenPuzzleAsync(
+					fifteenPuzzleId,
+					userId);
+
+				await transaction.CommitAsync();
+
+				return analysisResult;
+			}
+			catch
+			{
+				await transaction.RollbackAsync();
+				throw;
+			}
 		}
 
 		public async Task<ITaskAnalysisResult> AnalyzeAlphaBetaAsync(
@@ -64,24 +79,36 @@ namespace AICourseTester.Services
 			AlphaBetaSolutionDTO userSolution,
 			AlphaBetaSolutionDTO correctSolution)
 		{
-			var analysisResult = _alphaBetaErrorAnalysisService.Analyze(
-				problem,
-				userSolution,
-				correctSolution);
+			await using var transaction = await _context.Database.BeginTransactionAsync();
 
-			await SaveErrorsAsync(
-				taskType: "AlphaBeta",
-				alphaBetaId: alphaBetaId,
-				fifteenPuzzleId: null,
-				analysisResult: analysisResult);
+			try
+			{
+				var analysisResult = _alphaBetaErrorAnalysisService.Analyze(
+					problem,
+					userSolution,
+					correctSolution);
 
-			await _errorClassificationService.ClassifyErrorsAsync(alphaBetaId);
+				await SaveErrorsAsync(
+					taskType: "AlphaBeta",
+					alphaBetaId: alphaBetaId,
+					fifteenPuzzleId: null,
+					analysisResult: analysisResult);
 
-			await _knowledgeGapDetectionService.DetectForAlphaBetaAsync(
-				alphaBetaId,
-				userId);
+				await _errorClassificationService.ClassifyErrorsAsync(alphaBetaId);
 
-			return analysisResult;
+				await _knowledgeGapDetectionService.DetectForAlphaBetaAsync(
+					alphaBetaId,
+					userId);
+
+				await transaction.CommitAsync();
+
+				return analysisResult;
+			}
+			catch
+			{
+				await transaction.RollbackAsync();
+				throw;
+			}
 		}
 
 		private async Task SaveErrorsAsync(
@@ -155,7 +182,7 @@ namespace AICourseTester.Services
 			await _context.ErrorRecords.AddRangeAsync(errorEntities);
 			await _context.SaveChangesAsync();
 
-			var links = ErrorCausalityBuilder.Build(errorEntities);
+			var links = _errorCausalityBuilder.Build(errorEntities);
 
 			await _context.CausalErrorLinks.AddRangeAsync(links);
 			await _context.SaveChangesAsync();

@@ -56,6 +56,8 @@ namespace AICourseTester.Controllers
 			ab.UserPath = null;
 			ab.UserPrunedNodeIds = null;
 
+			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
+
 			await _context.SaveChangesAsync();
 
 			return Ok();
@@ -395,6 +397,34 @@ namespace AICourseTester.Controllers
 			return Ok(gaps);
 		}
 
+		private async Task RemoveAlphaBetaAnalysisDataAsync(int alphaBetaId)
+		{
+			var oldErrors = await _context.ErrorRecords
+				.Where(e => e.AlphaBetaId == alphaBetaId)
+				.ToListAsync();
+
+			var oldErrorIds = oldErrors.Select(e => e.Id).ToList();
+
+			if (oldErrorIds.Count > 0)
+			{
+				var oldLinks = await _context.CausalErrorLinks
+					.Where(l =>
+						oldErrorIds.Contains(l.SourceErrorId) ||
+						oldErrorIds.Contains(l.TargetErrorId))
+					.ToListAsync();
+
+				_context.CausalErrorLinks.RemoveRange(oldLinks);
+			}
+
+			_context.ErrorRecords.RemoveRange(oldErrors);
+
+			var oldGaps = await _context.KnowledgeGaps
+				.Where(g => g.AlphaBetaId == alphaBetaId)
+				.ToListAsync();
+
+			_context.KnowledgeGaps.RemoveRange(oldGaps);
+		}
+
 		private async Task<bool> _assignTask(string userId, int treeHeight, int maxValue, int template)
 		{
 			if ((await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)) == null)
@@ -410,18 +440,12 @@ namespace AICourseTester.Controllers
 				ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
 			}
 
-			var oldErrors = await _context.ErrorRecords
-				.Where(e => e.AlphaBetaId == ab.Id)
-				.ToListAsync();
-
-			if (oldErrors.Count > 0)
-			{
-				_context.ErrorRecords.RemoveRange(oldErrors);
-			}
+			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
 
 			ab.TreeHeight = treeHeight;
 			ab.UserSolution = null;
 			ab.UserPath = null;
+			ab.UserPrunedNodeIds = null;
 			ab.Solution = null;
 			ab.Path = null;
 			ab.Problem = null;
@@ -545,6 +569,7 @@ namespace AICourseTester.Controllers
 			ab.Problem = null;
 			ab.Solution = null;
 			ab.UserSolution = null;
+			ab.UserPrunedNodeIds = null;
 			ab.UserPath = null;
 			ab.Path = null;
 			ab.IsSolved = false;
@@ -552,14 +577,7 @@ namespace AICourseTester.Controllers
 			ab.MaxValue = maxValue;
 			ab.Template = template;
 
-			var oldErrors = await _context.ErrorRecords
-				.Where(e => e.AlphaBetaId == ab.Id)
-				.ToListAsync();
-
-			if (oldErrors.Count > 0)
-			{
-				_context.ErrorRecords.RemoveRange(oldErrors);
-			}
+			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
 
 			if (generate == true)
 			{
@@ -572,13 +590,23 @@ namespace AICourseTester.Controllers
 			return Ok();
 		}
 
-        [DisableRateLimiting]
-        [Authorize(Roles = "Administrator"), HttpDelete("Users/{userId}")]
-        public async Task<ActionResult> DeleteABTest(string userId)
-        {
-            await _context.AlphaBeta.Where(f => f.UserId == userId).ExecuteDeleteAsync();
-            await _context.SaveChangesAsync();
-            return Ok();
-        }
-    }
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator"), HttpDelete("Users/{userId}")]
+		public async Task<ActionResult> DeleteABTest(string userId)
+		{
+			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
+
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
+
+			_context.AlphaBeta.Remove(ab);
+			await _context.SaveChangesAsync();
+
+			return Ok();
+		}
+	}
 }

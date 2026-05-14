@@ -1,11 +1,12 @@
 ﻿using AICourseTester.Models;
 using AICourseTester.Models.Analysis;
+using AICourseTester.Services.Interfaces;
 
 namespace AICourseTester.Services.Analysis
 {
-	public static class ErrorCausalityBuilder
+	public class ErrorCausalityBuilder : IErrorCausalityBuilder
 	{
-		public static List<CausalErrorLink> Build(List<ErrorRecord> errors)
+		public List<CausalErrorLink> Build(List<ErrorRecord> errors)
 		{
 			var links = new List<CausalErrorLink>();
 
@@ -15,19 +16,57 @@ namespace AICourseTester.Services.Analysis
 			return RemoveDuplicates(links);
 		}
 
-		private static void AddFifteenPuzzleLinks(
-			List<ErrorRecord> errors,
-			List<CausalErrorLink> links)
-		{
-			foreach (var target in errors.Where(e => e.Code == "F_DERIVED_FROM_INCORRECT_COMPONENTS"))
-			{
-				var source = errors.FirstOrDefault(e =>
-					e.NodeId == target.NodeId &&
-					(e.Code == "H_INCORRECT" || e.Code == "G_INCORRECT"));
 
-				if (source != null)
+		private static void AddFifteenPuzzleLinks(
+					List<ErrorRecord> errors,
+					List<CausalErrorLink> links)
+		{
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.FDerivedFromIncorrectComponents))
+			{
+				foreach (var source in errors.Where(e =>
+					e.NodeId == target.NodeId &&
+					(e.Code == ErrorCodes.HIncorrect ||
+					 e.Code == ErrorCodes.GIncorrect)))
 				{
 					AddLink(links, source, target, "CAUSES", 1.0);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.FFormulaInconsistency))
+			{
+				foreach (var source in errors.Where(e =>
+					e.NodeId == target.NodeId &&
+					(e.Code == ErrorCodes.HIncorrect ||
+					 e.Code == ErrorCodes.GIncorrect)))
+				{
+					AddLink(links, source, target, "CONTEXT_FOR", 0.4);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.OpenOrderIncorrect))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.FIncorrect ||
+					e.Code == ErrorCodes.FFormulaInconsistency ||
+					e.Code == ErrorCodes.FDerivedFromIncorrectComponents ||
+					e.Code == ErrorCodes.HIncorrect ||
+					e.Code == ErrorCodes.GIncorrect))
+				{
+					AddLink(links, source, target, "MAY_CAUSE", 0.5);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.NodeMissing ||
+				e.Code == ErrorCodes.NodeUnexpected))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.OpenOrderIncorrect))
+				{
+					AddLink(links, source, target, "MAY_CAUSE", 0.6);
 				}
 			}
 		}
@@ -36,91 +75,182 @@ namespace AICourseTester.Services.Analysis
 			List<ErrorRecord> errors,
 			List<CausalErrorLink> links)
 		{
-			foreach (var target in errors.Where(e => e.Code == "NODE_B_INCORRECT"))
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.NodeBIncorrect))
 			{
-				var source = errors.FirstOrDefault(e =>
+				foreach (var source in errors.Where(e =>
 					e.NodeId == target.NodeId &&
-					(e.Code == "MIN_LEVEL_CONFUSION" ||
-					 e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING"));
-
-				if (source != null)
+					(e.Code == ErrorCodes.MinLevelConfusion ||
+					 e.Code == ErrorCodes.ValueAffectedByWrongPruning)))
 				{
 					AddLink(links, source, target, "EXPLAINS", 1.0);
 				}
 			}
 
-			foreach (var target in errors.Where(e => e.Code == "NODE_A_INCORRECT"))
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.NodeAIncorrect))
 			{
-				var source = errors.FirstOrDefault(e =>
+				foreach (var source in errors.Where(e =>
 					e.NodeId == target.NodeId &&
-					e.Code == "ROOT_MAX_CONFUSION");
-
-				if (source != null)
+					e.Code == ErrorCodes.RootMaxConfusion))
 				{
 					AddLink(links, source, target, "EXPLAINS", 1.0);
 				}
 			}
 
-			foreach (var target in errors.Where(e => e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING"))
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.ValueAffectedByWrongPruning))
 			{
-				var source = errors.FirstOrDefault(e =>
+				foreach (var source in errors.Where(e =>
 					e.RootBranchId == target.RootBranchId &&
-					(e.Code == "PRUNED_REQUIRED_NODE" ||
-					 e.Code == "EARLY_PRUNING_ERROR"));
-
-				if (source != null)
+					(e.Code == ErrorCodes.PrunedRequiredNode ||
+					 e.Code == ErrorCodes.EarlyPruningError)))
 				{
-					AddLink(links, source, target, "CAUSES", 0.9);
+					AddLink(links, source, target, "CAUSES", 1.0);
 				}
 			}
 
-			foreach (var target in errors.Where(e => e.Code == "PATH_STEP_INCORRECT"))
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.EarlyPruningError))
 			{
-				var source = errors.FirstOrDefault(e =>
-					e.Code == "NODE_A_INCORRECT" ||
-					e.Code == "NODE_B_INCORRECT" ||
-					e.Code == "ROOT_MAX_CONFUSION" ||
-					e.Code == "MIN_LEVEL_CONFUSION" ||
-					e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING");
+				foreach (var source in errors.Where(e =>
+					e.NodeId == target.NodeId &&
+					e.Code == ErrorCodes.PrunedRequiredNode))
+				{
+					AddLink(links, source, target, "EXPLAINS", 0.9);
+				}
+			}
 
-				if (source != null)
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.MissedPruningError))
+			{
+				foreach (var source in errors.Where(e =>
+					e.NodeId == target.NodeId &&
+					e.Code == ErrorCodes.FailedToPruneNode))
+				{
+					AddLink(links, source, target, "EXPLAINS", 0.9);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.PathStepIncorrect))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.NodeAIncorrect ||
+					e.Code == ErrorCodes.NodeBIncorrect ||
+					e.Code == ErrorCodes.NodeABIncorrect ||
+					e.Code == ErrorCodes.RootMaxConfusion ||
+					e.Code == ErrorCodes.MinLevelConfusion ||
+					e.Code == ErrorCodes.ValueAffectedByWrongPruning))
 				{
 					AddLink(links, source, target, "MAY_CAUSE", 0.6);
 				}
 			}
 
-			foreach (var target in errors.Where(e => e.Code == "PRUNING_PATH_INCONSISTENCY"))
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.PathNotMaximizingRootValue))
 			{
-				var source = errors.FirstOrDefault(e =>
-					e.Code == "PATH_THROUGH_PRUNED_BRANCH");
-
-				if (source != null)
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.PathStepIncorrect ||
+					e.Code == ErrorCodes.ValueCorrectPathWrong))
 				{
-					AddLink(links, source, target, "CAUSES", 1.0);
+					AddLink(links, source, target, "EXPLAINS", 0.8);
 				}
 			}
 
-			foreach (var target in errors.Where(e => e.Code == "VALUE_PRUNING_INCONSISTENCY"))
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.ValueCorrectPathWrong))
 			{
-				var source = errors.FirstOrDefault(e =>
-					e.Code == "PROCESSED_PRUNED_NODE");
-
-				if (source != null)
-				{
-					AddLink(links, source, target, "CAUSES", 1.0);
-				}
-			}
-
-			foreach (var target in errors.Where(e => e.Code == "VALUE_PATH_INCONSISTENCY"))
-			{
-				var source = errors.FirstOrDefault(e =>
-					e.Code == "VALUE_CORRECT_PATH_WRONG" ||
-					e.Code == "PATH_NOT_MAXIMIZING_ROOT_VALUE" ||
-					e.Code == "PATH_STEP_INCORRECT");
-
-				if (source != null)
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.PathStepIncorrect))
 				{
 					AddLink(links, source, target, "CAUSES", 0.8);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.ValuesAndPruningCorrectPathWrong))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.PathStepIncorrect ||
+					e.Code == ErrorCodes.ValueCorrectPathWrong ||
+					e.Code == ErrorCodes.PathNotMaximizingRootValue))
+				{
+					AddLink(links, source, target, "SUMMARIZES", 0.7);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.ValuesCorrectPruningWrong))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.PrunedRequiredNode ||
+					e.Code == ErrorCodes.FailedToPruneNode ||
+					e.Code == ErrorCodes.EarlyPruningError ||
+					e.Code == ErrorCodes.MissedPruningError ||
+					e.Code == ErrorCodes.ProcessedPrunedNode))
+				{
+					AddLink(links, source, target, "SUMMARIZES", 0.7);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.PruningCorrectResultWrongReason))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.ValuesCorrectPruningWrong ||
+					e.Code == ErrorCodes.EarlyPruningError ||
+					e.Code == ErrorCodes.MissedPruningError))
+				{
+					AddLink(links, source, target, "EXPLAINS", 0.7);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.PruningPathInconsistency))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.PathThroughPrunedBranch))
+				{
+					AddLink(links, source, target, "CAUSES", 1.0);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.ValuePruningInconsistency))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.ProcessedPrunedNode ||
+					e.Code == ErrorCodes.PrunedRequiredNode ||
+					e.Code == ErrorCodes.EarlyPruningError))
+				{
+					AddLink(links, source, target, "CAUSES", 0.9);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.ValuePathInconsistency))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.ValueCorrectPathWrong ||
+					e.Code == ErrorCodes.PathNotMaximizingRootValue ||
+					e.Code == ErrorCodes.PathStepIncorrect))
+				{
+					AddLink(links, source, target, "CAUSES", 0.8);
+				}
+			}
+
+			foreach (var target in errors.Where(e =>
+				e.Code == ErrorCodes.NodeMissing ||
+				e.Code == ErrorCodes.NodeUnexpected))
+			{
+				foreach (var source in errors.Where(e =>
+					e.Code == ErrorCodes.FailedToPruneNode ||
+					e.Code == ErrorCodes.MissedPruningError ||
+					e.Code == ErrorCodes.PrunedRequiredNode ||
+					e.Code == ErrorCodes.EarlyPruningError))
+				{
+					AddLink(links, source, target, "MAY_CAUSE", 0.5);
 				}
 			}
 		}
