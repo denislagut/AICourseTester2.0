@@ -1,5 +1,6 @@
 ﻿using AICourseTester.Data;
 using AICourseTester.Models;
+using AICourseTester.Models.Analysis;
 using AICourseTester.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,45 +9,85 @@ namespace AICourseTester.Services
 	public class ErrorClassificationService : IErrorClassificationService
 	{
 		private readonly MainDbContext _context;
+
+		public ErrorClassificationService(MainDbContext context)
+		{
+			_context = context;
+		}
+
 		private bool IsMinLevel(int level)
 		{
 			return level % 2 == 1;
 		}
+
+		private static bool IsAlphaBetaValueError(string code)
+		{
+			return code == ErrorCodes.NodeAIncorrect ||
+				   code == ErrorCodes.NodeBIncorrect ||
+				   code == ErrorCodes.NodeABIncorrect ||
+				   code == ErrorCodes.MinLevelConfusion ||
+				   code == ErrorCodes.RootMaxConfusion ||
+				   code == ErrorCodes.ValueAffectedByWrongPruning;
+		}
+
+		private static bool IsPathError(string code)
+		{
+			return code == ErrorCodes.PathStepIncorrect ||
+				   code == ErrorCodes.PathIncomplete ||
+				   code == ErrorCodes.PathRedundant ||
+				   code == ErrorCodes.PathMissing ||
+				   code == ErrorCodes.ValueCorrectPathWrong ||
+				   code == ErrorCodes.PathNotMaximizingRootValue ||
+				   code == ErrorCodes.ValuesAndPruningCorrectPathWrong;
+		}
+
+		private static bool IsPruningError(string code)
+		{
+			return code == ErrorCodes.PrunedRequiredNode ||
+				   code == ErrorCodes.FailedToPruneNode ||
+				   code == ErrorCodes.ProcessedPrunedNode ||
+				   code == ErrorCodes.PathThroughPrunedBranch ||
+				   code == ErrorCodes.EarlyPruningError ||
+				   code == ErrorCodes.MissedPruningError ||
+				   code == ErrorCodes.ValueAffectedByWrongPruning ||
+				   code == ErrorCodes.ValuesCorrectPruningWrong ||
+				   code == ErrorCodes.PruningCorrectResultWrongReason ||
+				   code == ErrorCodes.PruningPathInconsistency ||
+				   code == ErrorCodes.ValuePruningInconsistency;
+		}
+
 		private static string GetErrorCategory(string code)
 		{
-			if (code.StartsWith("NODE") ||
-				code == "MIN_LEVEL_CONFUSION" ||
-				code == "ROOT_MAX_CONFUSION" ||
-				code == "H_INCORRECT" ||
-				code == "G_INCORRECT" ||
-				code == "F_INCORRECT" ||
-				code == "F_FORMULA_INCONSISTENCY" ||
-				code == "F_DERIVED_FROM_INCORRECT_COMPONENTS")
+			if (code == ErrorCodes.NodeAIncorrect ||
+				code == ErrorCodes.NodeBIncorrect ||
+				code == ErrorCodes.NodeABIncorrect ||
+				code == ErrorCodes.NodeMissing ||
+				code == ErrorCodes.NodeUnexpected ||
+				code == ErrorCodes.MinLevelConfusion ||
+				code == ErrorCodes.RootMaxConfusion ||
+				code == ErrorCodes.HIncorrect ||
+				code == ErrorCodes.GIncorrect ||
+				code == ErrorCodes.FIncorrect ||
+				code == ErrorCodes.FFormulaInconsistency ||
+				code == ErrorCodes.FDerivedFromIncorrectComponents)
 			{
 				return "Calculation";
 			}
 
-			if (code.StartsWith("PATH") ||
-				code == "VALUE_CORRECT_PATH_WRONG" ||
-				code == "PATH_NOT_MAXIMIZING_ROOT_VALUE" ||
-				code == "OPEN_ORDER_INCORRECT" ||
-				code == "NODE_EXPANSION_ORDER_ERROR")
+			if (IsPathError(code) ||
+				code == ErrorCodes.OpenOrderIncorrect)
 			{
 				return "Strategy";
 			}
 
-			if (code.Contains("PRUNE") ||
-				code.Contains("PRUNING") ||
-				code == "EARLY_PRUNING_ERROR" ||
-				code == "MISSED_PRUNING_ERROR" ||
-				code == "VALUE_AFFECTED_BY_WRONG_PRUNING")
+			if (IsPruningError(code))
 			{
 				return "Pruning";
 			}
 
-			if (code.Contains("CONSISTENCY") ||
-				code == "VALUE_PATH_INCONSISTENCY" ||
-				code == "VALUE_PRUNING_INCONSISTENCY")
+			if (code == ErrorCodes.ValuePathInconsistency ||
+				code == ErrorCodes.ValuePruningInconsistency ||
+				code == ErrorCodes.PruningPathInconsistency)
 			{
 				return "Consistency";
 			}
@@ -68,11 +109,6 @@ namespace AICourseTester.Services
 			return "Low";
 		}
 
-		public ErrorClassificationService(MainDbContext context)
-		{
-			_context = context;
-		}
-
 		public async Task ClassifyErrorsAsync(int alphaBetaId)
 		{
 			await EnsureReferenceDataAsync();
@@ -88,14 +124,12 @@ namespace AICourseTester.Services
 
 			var errorTypes = await _context.ErrorTypes.ToListAsync();
 
-			// Проход 1: базовая классификация
 			foreach (var error in errors)
 			{
 				var matchedType = MatchErrorType(error, errors, errorTypes);
 				error.ErrorTypeId = matchedType?.Id;
 			}
 
-			// Проход 2: составные правила
 			ApplyCompositeClassification(errors, errorTypes);
 
 			await _context.SaveChangesAsync();
@@ -103,63 +137,56 @@ namespace AICourseTester.Services
 
 		private void ApplyCompositeClassification(List<ErrorRecord> errors, List<ErrorType> errorTypes)
 		{
-			var hasValueErrors = errors.Any(e =>
-				e.Code == "NODE_A_INCORRECT" ||
-				e.Code == "NODE_B_INCORRECT" ||
-				e.Code == "NODE_AB_INCORRECT");
+			var hasValueErrors = errors.Any(e => IsAlphaBetaValueError(e.Code));
+			var hasPathErrors = errors.Any(e => IsPathError(e.Code));
 
-			var hasPathErrors = errors.Any(e => e.Code.StartsWith("PATH"));
-
-			// 1. Путь неверен, но значения в целом верны
 			if (hasPathErrors && !hasValueErrors)
 			{
 				var pathConsistencyType = errorTypes.FirstOrDefault(t => t.Code == "PATH_VALUE_CONSISTENCY_ERROR");
 
-				foreach (var error in errors.Where(e => e.Code.StartsWith("PATH")))
+				foreach (var error in errors.Where(e =>
+					e.Code == ErrorCodes.PathStepIncorrect ||
+					e.Code == ErrorCodes.PathIncomplete ||
+					e.Code == ErrorCodes.PathRedundant ||
+					e.Code == ErrorCodes.PathMissing))
 				{
 					error.ErrorTypeId = pathConsistencyType?.Id;
 				}
 			}
 
-			// 2. Есть конфликт пути и pruning
-			// Конфликт пути и отсечения:
-			// путь пользователя проходит через ветвь, которую он сам отметил как отсечённую.
-			// Это не просто ошибка pruning, а противоречие между двумя частями решения.
 			if (errors.Any(e =>
-				e.Code == "PATH_THROUGH_PRUNED_BRANCH" ||
-				e.Code == "PRUNING_PATH_INCONSISTENCY"))
+				e.Code == ErrorCodes.PathThroughPrunedBranch ||
+				e.Code == ErrorCodes.PruningPathInconsistency))
 			{
 				var conflictType = errorTypes.FirstOrDefault(t => t.Code == "PRUNING_PATH_CONFLICT_ERROR");
 
 				foreach (var error in errors.Where(e =>
-					e.Code == "PATH_THROUGH_PRUNED_BRANCH" ||
-					e.Code == "PRUNING_PATH_INCONSISTENCY"))
+					e.Code == ErrorCodes.PathThroughPrunedBranch ||
+					e.Code == ErrorCodes.PruningPathInconsistency))
 				{
 					error.ErrorTypeId = conflictType?.Id;
 				}
 			}
 
-			// 3. Есть общая несогласованность решения
 			if (errors.Any(e =>
-				e.Code == "VALUE_PATH_INCONSISTENCY" ||
-				e.Code == "VALUE_PRUNING_INCONSISTENCY" ||
-				e.Code == "PRUNING_PATH_INCONSISTENCY"))
+				e.Code == ErrorCodes.ValuePathInconsistency ||
+				e.Code == ErrorCodes.ValuePruningInconsistency ||
+				e.Code == ErrorCodes.PruningPathInconsistency))
 			{
 				var consistencyType = errorTypes.FirstOrDefault(t => t.Code == "SOLUTION_CONSISTENCY_ERROR");
 
 				foreach (var error in errors.Where(e =>
-					e.Code == "VALUE_PATH_INCONSISTENCY" ||
-					e.Code == "VALUE_PRUNING_INCONSISTENCY" ||
-					e.Code == "PRUNING_PATH_INCONSISTENCY"))
+					e.Code == ErrorCodes.ValuePathInconsistency ||
+					e.Code == ErrorCodes.ValuePruningInconsistency ||
+					e.Code == ErrorCodes.PruningPathInconsistency))
 				{
 					error.ErrorTypeId = consistencyType?.Id;
 				}
 			}
 
-			// 4. Если pruning-ошибки сконцентрированы в одном поддереве,
-			// усиливаем их как boundary error
 			var groupedByBranch = errors
-				.Where(e => e.RootBranchId.HasValue && (e.Code == "PROCESSED_PRUNED_NODE"))
+				.Where(e => e.RootBranchId.HasValue &&
+							e.Code == ErrorCodes.ProcessedPrunedNode)
 				.GroupBy(e => e.RootBranchId!.Value);
 
 			var boundaryType = errorTypes.FirstOrDefault(t => t.Code == "PRUNING_BOUNDARY_ERROR");
@@ -177,11 +204,11 @@ namespace AICourseTester.Services
 		}
 
 		private ErrorType? MatchFifteenPuzzleErrorType(
-		ErrorRecord error,
-		List<ErrorRecord> allErrors,
-		List<ErrorType> errorTypes)
+			ErrorRecord error,
+			List<ErrorRecord> allErrors,
+			List<ErrorType> errorTypes)
 		{
-			if (error.Code == "H_INCORRECT")
+			if (error.Code == ErrorCodes.HIncorrect)
 			{
 				if (error.GroupKey == "HAMMING_H_VALUE")
 				{
@@ -196,33 +223,33 @@ namespace AICourseTester.Services
 				return errorTypes.FirstOrDefault(t => t.Code == "HEURISTIC_VALUE_CALCULATION_ERROR");
 			}
 
-			if (error.Code == "G_INCORRECT")
+			if (error.Code == ErrorCodes.GIncorrect)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "PATH_COST_CALCULATION_ERROR");
 			}
 
-			if (error.Code == "F_FORMULA_INCONSISTENCY")
+			if (error.Code == ErrorCodes.FFormulaInconsistency)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "F_FORMULA_CONSISTENCY_ERROR");
 			}
 
-			if (error.Code == "F_DERIVED_FROM_INCORRECT_COMPONENTS")
+			if (error.Code == ErrorCodes.FDerivedFromIncorrectComponents)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "DEPENDENT_VALUE_ERROR");
 			}
 
-			if (error.Code == "F_INCORRECT")
+			if (error.Code == ErrorCodes.FIncorrect)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "F_SCORE_CALCULATION_ERROR");
 			}
 
-			if (error.Code == "OPEN_ORDER_INCORRECT")
+			if (error.Code == ErrorCodes.OpenOrderIncorrect)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "NODE_EXPANSION_ORDER_ERROR");
 			}
 
-			if (error.Code == "NODE_MISSING" ||
-				error.Code == "NODE_UNEXPECTED")
+			if (error.Code == ErrorCodes.NodeMissing ||
+				error.Code == ErrorCodes.NodeUnexpected)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "A_STAR_SEARCH_STRATEGY_ERROR");
 			}
@@ -261,21 +288,19 @@ namespace AICourseTester.Services
 			{
 				return MatchFifteenPuzzleErrorType(error, allErrors, errorTypes);
 			}
-			// 1. Ошибки вычисления значений узлов
-			if (error.Code == "NODE_A_INCORRECT" ||
-				error.Code == "NODE_B_INCORRECT" ||
-				error.Code == "NODE_AB_INCORRECT")
+
+			if (error.Code == ErrorCodes.NodeAIncorrect ||
+				error.Code == ErrorCodes.NodeBIncorrect ||
+				error.Code == ErrorCodes.NodeABIncorrect)
 			{
 				if (error.TreeLevel.HasValue)
 				{
-					// В вашей задаче можно договориться:
-					// четный/нечетный уровень интерпретировать как MAX/MIN
-					// в зависимости от дерева и корня
 					if (IsMinLevel(error.TreeLevel.Value))
 					{
 						return errorTypes.FirstOrDefault(t => t.Code == "MIN_LEVEL_AGGREGATION_ERROR");
 					}
-					else if (error.TreeLevel.Value > 0)
+
+					if (error.TreeLevel.Value > 0)
 					{
 						return errorTypes.FirstOrDefault(t => t.Code == "MAX_LEVEL_AGGREGATION_ERROR");
 					}
@@ -284,16 +309,12 @@ namespace AICourseTester.Services
 				return errorTypes.FirstOrDefault(t => t.Code == "MINIMAX_VALUE_CALCULATION_ERROR");
 			}
 
-			// 2. Ошибки выбора пути
-			if (error.Code == "PATH_STEP_INCORRECT" ||
-				error.Code == "PATH_INCOMPLETE" ||
-				error.Code == "PATH_REDUNDANT" ||
-				error.Code == "PATH_MISSING")
+			if (error.Code == ErrorCodes.PathStepIncorrect ||
+				error.Code == ErrorCodes.PathIncomplete ||
+				error.Code == ErrorCodes.PathRedundant ||
+				error.Code == ErrorCodes.PathMissing)
 			{
-				var hasValueErrors = allErrors.Any(e =>
-					e.Code == "NODE_A_INCORRECT" ||
-					e.Code == "NODE_B_INCORRECT" ||
-					e.Code == "NODE_AB_INCORRECT");
+				var hasValueErrors = allErrors.Any(e => IsAlphaBetaValueError(e.Code));
 
 				if (!hasValueErrors)
 				{
@@ -303,250 +324,242 @@ namespace AICourseTester.Services
 				return errorTypes.FirstOrDefault(t => t.Code == "OPTIMAL_PATH_SELECTION_ERROR");
 			}
 
-			// 4. Ошибки pruning — границы отсечения
-			if (error.Code == "OVER_PRUNING_SUBTREE" ||
-				error.Code == "UNDER_PRUNING_SUBTREE" ||
-				error.Code == "PROCESSED_PRUNED_NODE")
+			if (error.Code == ErrorCodes.OverPruningSubtree ||
+				error.Code == ErrorCodes.UnderPruningSubtree ||
+				error.Code == ErrorCodes.ProcessedPrunedNode)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "PRUNING_BOUNDARY_ERROR");
 			}
 
-			// 5. Конфликт пути и отсечения
-			if (error.Code == "PATH_THROUGH_PRUNED_BRANCH" ||
-				error.Code == "PRUNING_PATH_INCONSISTENCY")
+			if (error.Code == ErrorCodes.PathThroughPrunedBranch ||
+				error.Code == ErrorCodes.PruningPathInconsistency)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "PRUNING_PATH_CONFLICT_ERROR");
 			}
 
-			// 6. Согласованность решения
-			if (error.Code == "VALUE_PATH_INCONSISTENCY" ||
-				error.Code == "VALUE_PRUNING_INCONSISTENCY")
+			if (error.Code == ErrorCodes.ValuePathInconsistency ||
+				error.Code == ErrorCodes.ValuePruningInconsistency)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "SOLUTION_CONSISTENCY_ERROR");
 			}
 
-			// 7. Ошибки структуры
-			if (error.Code == "NODE_MISSING" ||
-				error.Code == "NODE_UNEXPECTED")
+			if (error.Code == ErrorCodes.NodeMissing ||
+				error.Code == ErrorCodes.NodeUnexpected)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "TREE_STRUCTURE_PROCESSING_ERROR");
 			}
 
-			if (error.Code == "MIN_LEVEL_CONFUSION" || error.Code == "ROOT_MAX_CONFUSION")
+			if (error.Code == ErrorCodes.MinLevelConfusion ||
+				error.Code == ErrorCodes.RootMaxConfusion)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "MIN_MAX_ROLE_CONFUSION_ERROR");
 			}
 
-			if (error.Code == "VALUE_CORRECT_PATH_WRONG" ||
-			error.Code == "PATH_NOT_MAXIMIZING_ROOT_VALUE" ||
-			error.Code == "VALUES_AND_PRUNING_CORRECT_PATH_WRONG")
+			if (error.Code == ErrorCodes.ValueCorrectPathWrong ||
+				error.Code == ErrorCodes.PathNotMaximizingRootValue ||
+				error.Code == ErrorCodes.ValuesAndPruningCorrectPathWrong)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "OPTIMAL_PATH_SELECTION_ERROR");
 			}
 
-			if (error.Code == "EARLY_PRUNING_ERROR" ||
-				error.Code == "PRUNED_REQUIRED_NODE")
+			if (error.Code == ErrorCodes.EarlyPruningError ||
+				error.Code == ErrorCodes.PrunedRequiredNode)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "EARLY_PRUNING_ERROR_TYPE");
 			}
 
-			if (error.Code == "MISSED_PRUNING_ERROR" ||
-				error.Code == "FAILED_TO_PRUNE_NODE")
+			if (error.Code == ErrorCodes.MissedPruningError ||
+				error.Code == ErrorCodes.FailedToPruneNode)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "MISSED_PRUNING_ERROR_TYPE");
 			}
 
-			if (error.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING")
+			if (error.Code == ErrorCodes.ValueAffectedByWrongPruning)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "VALUE_PRUNING_DEPENDENCY_ERROR");
 			}
 
-			// Ошибка логики alpha-beta:
-			// значения и путь могут быть корректными, но сами отсечения выполнены неверно.
-			// Используется для отделения понимания минимакса от понимания pruning.
-			if (error.Code == "VALUES_CORRECT_PRUNING_WRONG" ||
-				error.Code == "PRUNING_CORRECT_RESULT_WRONG_REASON")
+			if (error.Code == ErrorCodes.ValuesCorrectPruningWrong ||
+				error.Code == ErrorCodes.PruningCorrectResultWrongReason)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "PRUNING_LOGIC_ERROR");
 			}
 
-			// 8. Резерв
 			return errorTypes.FirstOrDefault(t => t.Code == "UNCLASSIFIED_ERROR");
 		}
 
 		private async Task EnsureReferenceDataAsync()
 		{
-			// ---------- ErrorTypes ----------
 			var requiredErrorTypes = new List<ErrorType>
-	{
-		new ErrorType
-		{
-			Code = "MINIMAX_VALUE_CALCULATION_ERROR",
-			Name = "Ошибка вычисления минимаксных значений",
-			Description = "Неверное вычисление значений узлов дерева.",
-			DefaultSeverity = 2.0
-		},
-		new ErrorType
-		{
-			Code = "MIN_LEVEL_AGGREGATION_ERROR",
-			Name = "Ошибка выбора минимального значения",
-			Description = "Ошибка на уровне MIN-узлов.",
-			DefaultSeverity = 2.5
-		},
-		new ErrorType
-		{
-			Code = "MAX_LEVEL_AGGREGATION_ERROR",
-			Name = "Ошибка выбора максимального значения",
-			Description = "Ошибка на уровне MAX-узлов.",
-			DefaultSeverity = 2.5
-		},
-		new ErrorType
-		{
-			Code = "OPTIMAL_PATH_SELECTION_ERROR",
-			Name = "Ошибка выбора оптимального пути",
-			Description = "Неверный выбор оптимального пути или неполное указание пути.",
-			DefaultSeverity = 3.0
-		},
-		new ErrorType
-		{
-			Code = "PATH_VALUE_CONSISTENCY_ERROR",
-			Name = "Ошибка согласованности пути и значений",
-			Description = "Выбранный путь не соответствует рассчитанным значениям.",
-			DefaultSeverity = 3.0
-		},
-		new ErrorType
-		{
-			Code = "PRUNING_BOUNDARY_ERROR",
-			Name = "Ошибка границ отсечения",
-			Description = "Неверно определены ветви, охватываемые отсечением.",
-			DefaultSeverity = 3.5
-		},
-		new ErrorType
-		{
-			Code = "PRUNING_PATH_CONFLICT_ERROR",
-			Name = "Конфликт пути и отсечения",
-			Description = "Выбранный путь противоречит выполненным отсечениям.",
-			DefaultSeverity = 4.0
-		},
-		new ErrorType
-		{
-			Code = "SOLUTION_CONSISTENCY_ERROR",
-			Name = "Ошибка внутренней согласованности решения",
-			Description = "Значения, путь и отсечения противоречат друг другу.",
-			DefaultSeverity = 3.5
-		},
-		new ErrorType
-		{
-			Code = "TREE_STRUCTURE_PROCESSING_ERROR",
-			Name = "Ошибка обработки структуры дерева",
-			Description = "Пропущены обязательные узлы или обработаны лишние.",
-			DefaultSeverity = 2.0
-		},
-		new ErrorType
-		{
-			Code = "UNCLASSIFIED_ERROR",
-			Name = "Неклассифицированная ошибка",
-			Description = "Ошибка не была сопоставлена с известным типом.",
-			DefaultSeverity = 1.0
-		},
-		new ErrorType
-		{
-			Code = "HEURISTIC_VALUE_CALCULATION_ERROR",
-			Name = "Ошибка расчёта эвристики",
-			Description = "Неверно рассчитано значение эвристической функции h(n).",
-			DefaultSeverity = 3.0
-		},
-		new ErrorType
-		{
-			Code = "PATH_COST_CALCULATION_ERROR",
-			Name = "Ошибка расчёта стоимости пути",
-			Description = "Неверно рассчитано значение g(n).",
-			DefaultSeverity = 2.5
-		},
-		new ErrorType
-		{
-			Code = "F_SCORE_CALCULATION_ERROR",
-			Name = "Ошибка расчёта оценочной функции",
-			Description = "Неверно рассчитано значение f(n).",
-			DefaultSeverity = 2.5
-		},
-		new ErrorType
-		{
-			Code = "F_FORMULA_CONSISTENCY_ERROR",
-			Name = "Ошибка формулы f = g + h",
-			Description = "Значение f(n) не соответствует сумме g(n) и h(n).",
-			DefaultSeverity = 3.5
-		},
-		new ErrorType
-		{
-			Code = "NODE_EXPANSION_ORDER_ERROR",
-			Name = "Ошибка порядка раскрытия узлов",
-			Description = "Неверно выбран порядок раскрытия узлов в алгоритме A*.",
-			DefaultSeverity = 3.5
-		},
-		new ErrorType
-		{
-			Code = "A_STAR_SEARCH_STRATEGY_ERROR",
-			Name = "Ошибка стратегии поиска A*",
-			Description = "Пользователь обработал лишние узлы или пропустил необходимые.",
-			DefaultSeverity = 3.0
-		},
-		new ErrorType
-{
-			Code = "HAMMING_HEURISTIC_CALCULATION_ERROR",
-			Name = "Ошибка расчёта расстояния Хемминга",
-			Description = "Неверно рассчитана эвристика Хемминга.",
-			DefaultSeverity = 3.0
-		},
-		new ErrorType
-		{
-			Code = "MANHATTAN_HEURISTIC_CALCULATION_ERROR",
-			Name = "Ошибка расчёта Манхэттенского расстояния",
-			Description = "Неверно рассчитана манхэттенская эвристика.",
-			DefaultSeverity = 3.0
-		},
-		new ErrorType
-		{
-			Code = "DEPENDENT_VALUE_ERROR",
-			Name = "Производная ошибка значения",
-			Description = "Значение отличается от эталона как следствие ошибки в другом параметре.",
-			DefaultSeverity = 1.0
-		},
-		new ErrorType
-		{
-			Code = "MIN_MAX_ROLE_CONFUSION_ERROR",
-			Name = "Ошибка различения MIN и MAX",
-			Description = "Студент перепутал роли минимизирующего и максимизирующего уровней.",
-			DefaultSeverity = 3.5
-		},
-		new ErrorType
-		{
-			Code = "EARLY_PRUNING_ERROR_TYPE",
-			Name = "Слишком раннее отсечение",
-			Description = "Отсечение выполнено до выполнения условия alpha-beta.",
-			DefaultSeverity = 3.5
-		},
-		new ErrorType
-		{
-			Code = "MISSED_PRUNING_ERROR_TYPE",
-			Name = "Пропущенное отсечение",
-			Description = "Студент не выполнил отсечение после наступления условия alpha-beta.",
-			DefaultSeverity = 3.0
-		},
-		new ErrorType
-		{
-			Code = "VALUE_PRUNING_DEPENDENCY_ERROR",
-			Name = "Ошибка значения из-за неверного отсечения",
-			Description = "Значение узла стало неверным из-за отсечения значимого дочернего узла.",
-			DefaultSeverity = 4.0
-		},
-		new ErrorType
-		{
-			Code = "PRUNING_LOGIC_ERROR",
-			Name = "Ошибка логики alpha-beta отсечения",
-			Description = "Итог решения может быть частично верным, но логика отсечения применена неверно.",
-			DefaultSeverity = 3.5
-		},
+			{
+				new ErrorType
+				{
+					Code = "MINIMAX_VALUE_CALCULATION_ERROR",
+					Name = "Ошибка вычисления минимаксных значений",
+					Description = "Неверное вычисление значений узлов дерева.",
+					DefaultSeverity = 2.0
+				},
+				new ErrorType
+				{
+					Code = "MIN_LEVEL_AGGREGATION_ERROR",
+					Name = "Ошибка выбора минимального значения",
+					Description = "Ошибка на уровне MIN-узлов.",
+					DefaultSeverity = 2.5
+				},
+				new ErrorType
+				{
+					Code = "MAX_LEVEL_AGGREGATION_ERROR",
+					Name = "Ошибка выбора максимального значения",
+					Description = "Ошибка на уровне MAX-узлов.",
+					DefaultSeverity = 2.5
+				},
+				new ErrorType
+				{
+					Code = "OPTIMAL_PATH_SELECTION_ERROR",
+					Name = "Ошибка выбора оптимального пути",
+					Description = "Неверный выбор оптимального пути или неполное указание пути.",
+					DefaultSeverity = 3.0
+				},
+				new ErrorType
+				{
+					Code = "PATH_VALUE_CONSISTENCY_ERROR",
+					Name = "Ошибка согласованности пути и значений",
+					Description = "Выбранный путь не соответствует рассчитанным значениям.",
+					DefaultSeverity = 3.0
+				},
+				new ErrorType
+				{
+					Code = "PRUNING_BOUNDARY_ERROR",
+					Name = "Ошибка границ отсечения",
+					Description = "Неверно определены ветви, охватываемые отсечением.",
+					DefaultSeverity = 3.5
+				},
+				new ErrorType
+				{
+					Code = "PRUNING_PATH_CONFLICT_ERROR",
+					Name = "Конфликт пути и отсечения",
+					Description = "Выбранный путь противоречит выполненным отсечениям.",
+					DefaultSeverity = 4.0
+				},
+				new ErrorType
+				{
+					Code = "SOLUTION_CONSISTENCY_ERROR",
+					Name = "Ошибка внутренней согласованности решения",
+					Description = "Значения, путь и отсечения противоречат друг другу.",
+					DefaultSeverity = 3.5
+				},
+				new ErrorType
+				{
+					Code = "TREE_STRUCTURE_PROCESSING_ERROR",
+					Name = "Ошибка обработки структуры дерева",
+					Description = "Пропущены обязательные узлы или обработаны лишние.",
+					DefaultSeverity = 2.0
+				},
+				new ErrorType
+				{
+					Code = "UNCLASSIFIED_ERROR",
+					Name = "Неклассифицированная ошибка",
+					Description = "Ошибка не была сопоставлена с известным типом.",
+					DefaultSeverity = 1.0
+				},
+				new ErrorType
+				{
+					Code = "HEURISTIC_VALUE_CALCULATION_ERROR",
+					Name = "Ошибка расчёта эвристики",
+					Description = "Неверно рассчитано значение эвристической функции h(n).",
+					DefaultSeverity = 3.0
+				},
+				new ErrorType
+				{
+					Code = "PATH_COST_CALCULATION_ERROR",
+					Name = "Ошибка расчёта стоимости пути",
+					Description = "Неверно рассчитано значение g(n).",
+					DefaultSeverity = 2.5
+				},
+				new ErrorType
+				{
+					Code = "F_SCORE_CALCULATION_ERROR",
+					Name = "Ошибка расчёта оценочной функции",
+					Description = "Неверно рассчитано значение f(n).",
+					DefaultSeverity = 2.5
+				},
+				new ErrorType
+				{
+					Code = "F_FORMULA_CONSISTENCY_ERROR",
+					Name = "Ошибка формулы f = g + h",
+					Description = "Значение f(n) не соответствует сумме g(n) и h(n).",
+					DefaultSeverity = 3.5
+				},
+				new ErrorType
+				{
+					Code = "NODE_EXPANSION_ORDER_ERROR",
+					Name = "Ошибка порядка раскрытия узлов",
+					Description = "Неверно выбран порядок раскрытия узлов в алгоритме A*.",
+					DefaultSeverity = 3.5
+				},
+				new ErrorType
+				{
+					Code = "A_STAR_SEARCH_STRATEGY_ERROR",
+					Name = "Ошибка стратегии поиска A*",
+					Description = "Пользователь обработал лишние узлы или пропустил необходимые.",
+					DefaultSeverity = 3.0
+				},
+				new ErrorType
+				{
+					Code = "HAMMING_HEURISTIC_CALCULATION_ERROR",
+					Name = "Ошибка расчёта расстояния Хемминга",
+					Description = "Неверно рассчитана эвристика Хемминга.",
+					DefaultSeverity = 3.0
+				},
+				new ErrorType
+				{
+					Code = "MANHATTAN_HEURISTIC_CALCULATION_ERROR",
+					Name = "Ошибка расчёта Манхэттенского расстояния",
+					Description = "Неверно рассчитана манхэттенская эвристика.",
+					DefaultSeverity = 3.0
+				},
+				new ErrorType
+				{
+					Code = "DEPENDENT_VALUE_ERROR",
+					Name = "Производная ошибка значения",
+					Description = "Значение отличается от эталона как следствие ошибки в другом параметре.",
+					DefaultSeverity = 1.0
+				},
+				new ErrorType
+				{
+					Code = "MIN_MAX_ROLE_CONFUSION_ERROR",
+					Name = "Ошибка различения MIN и MAX",
+					Description = "Студент перепутал роли минимизирующего и максимизирующего уровней.",
+					DefaultSeverity = 3.5
+				},
+				new ErrorType
+				{
+					Code = "EARLY_PRUNING_ERROR_TYPE",
+					Name = "Слишком раннее отсечение",
+					Description = "Отсечение выполнено до выполнения условия alpha-beta.",
+					DefaultSeverity = 3.5
+				},
+				new ErrorType
+				{
+					Code = "MISSED_PRUNING_ERROR_TYPE",
+					Name = "Пропущенное отсечение",
+					Description = "Студент не выполнил отсечение после наступления условия alpha-beta.",
+					DefaultSeverity = 3.0
+				},
+				new ErrorType
+				{
+					Code = "VALUE_PRUNING_DEPENDENCY_ERROR",
+					Name = "Ошибка значения из-за неверного отсечения",
+					Description = "Значение узла стало неверным из-за отсечения значимого дочернего узла.",
+					DefaultSeverity = 4.0
+				},
+				new ErrorType
+				{
+					Code = "PRUNING_LOGIC_ERROR",
+					Name = "Ошибка логики alpha-beta отсечения",
+					Description = "Итог решения может быть частично верным, но логика отсечения применена неверно.",
+					DefaultSeverity = 3.5
+				}
 			};
 
 			var existingErrorTypes = await _context.ErrorTypes.ToListAsync();
@@ -568,94 +581,93 @@ namespace AICourseTester.Services
 
 			await _context.SaveChangesAsync();
 
-			// ---------- KnowledgeAspects ----------
 			var requiredAspects = new List<KnowledgeAspect>
-	{
-		new KnowledgeAspect
-		{
-			Name = "Принцип вычисления минимаксных значений",
-			Description = "Понимание вычисления значений узлов дерева на основе дочерних узлов.",
-			TopicName = "Минимакс и альфа-бета отсечение",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Выбор оптимального хода",
-			Description = "Понимание того, как выбирается оптимальный путь в дереве игры.",
-			TopicName = "Минимакс и альфа-бета отсечение",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Понимание условий альфа-бета отсечения",
-			Description = "Понимание того, когда отсечение допустимо.",
-			TopicName = "Минимакс и альфа-бета отсечение",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Понимание границ действия отсечения",
-			Description = "Понимание того, какие ветви охватывает отсечение.",
-			TopicName = "Минимакс и альфа-бета отсечение",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Корректная обработка структуры дерева",
-			Description = "Понимание того, какие узлы должны быть обработаны и заполнены.",
-			TopicName = "Минимакс и альфа-бета отсечение",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Согласованность решения",
-			Description = "Согласованность вычисленных значений, выбранного пути, раскрытых узлов и выполненных отсечений.",
-			TopicName = "Алгоритмы поиска",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Расчёт эвристической функции",
-			Description = "Понимание назначения и расчёта эвристической функции h(n).",
-			TopicName = "Алгоритм A*",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Расчёт расстояния Хемминга",
-			Description = "Понимание расчёта эвристики по количеству неправильно расположенных фишек.",
-			TopicName = "Алгоритм A*",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Расчёт Манхэттенского расстояния",
-			Description = "Понимание расчёта суммы расстояний фишек до целевых позиций.",
-			TopicName = "Алгоритм A*",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Расчёт стоимости пути g(n)",
-			Description = "Понимание накопленной стоимости пути от начального состояния.",
-			TopicName = "Алгоритм A*",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Расчёт оценочной функции f(n)",
-			Description = "Понимание формулы f(n)=g(n)+h(n).",
-			TopicName = "Алгоритм A*",
-			IsActive = true
-		},
-		new KnowledgeAspect
-		{
-			Name = "Выбор узла для раскрытия в A*",
-			Description = "Понимание принципа выбора следующего узла с минимальным f(n).",
-			TopicName = "Алгоритм A*",
-			IsActive = true
-		}
-	};
+			{
+				new KnowledgeAspect
+				{
+					Name = "Принцип вычисления минимаксных значений",
+					Description = "Понимание вычисления значений узлов дерева на основе дочерних узлов.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Выбор оптимального хода",
+					Description = "Понимание того, как выбирается оптимальный путь в дереве игры.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Понимание условий альфа-бета отсечения",
+					Description = "Понимание того, когда отсечение допустимо.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Понимание границ действия отсечения",
+					Description = "Понимание того, какие ветви охватывает отсечение.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Корректная обработка структуры дерева",
+					Description = "Понимание того, какие узлы должны быть обработаны и заполнены.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Согласованность решения",
+					Description = "Согласованность вычисленных значений, выбранного пути, раскрытых узлов и выполненных отсечений.",
+					TopicName = "Алгоритмы поиска",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Расчёт эвристической функции",
+					Description = "Понимание назначения и расчёта эвристической функции h(n).",
+					TopicName = "Алгоритм A*",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Расчёт расстояния Хемминга",
+					Description = "Понимание расчёта эвристики по количеству неправильно расположенных фишек.",
+					TopicName = "Алгоритм A*",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Расчёт Манхэттенского расстояния",
+					Description = "Понимание расчёта суммы расстояний фишек до целевых позиций.",
+					TopicName = "Алгоритм A*",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Расчёт стоимости пути g(n)",
+					Description = "Понимание накопленной стоимости пути от начального состояния.",
+					TopicName = "Алгоритм A*",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Расчёт оценочной функции f(n)",
+					Description = "Понимание формулы f(n)=g(n)+h(n).",
+					TopicName = "Алгоритм A*",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Выбор узла для раскрытия в A*",
+					Description = "Понимание принципа выбора следующего узла с минимальным f(n).",
+					TopicName = "Алгоритм A*",
+					IsActive = true
+				}
+			};
 
 			var existingAspects = await _context.KnowledgeAspects.ToListAsync();
 
@@ -676,14 +688,12 @@ namespace AICourseTester.Services
 
 			await _context.SaveChangesAsync();
 
-			// ---------- ErrorTypeAspect ----------
 			var errorTypes = await _context.ErrorTypes.ToListAsync();
 			var aspects = await _context.KnowledgeAspects.ToListAsync();
 			var existingLinks = await _context.ErrorTypeAspects.ToListAsync();
 
 			var requiredLinks = new List<(string errorTypeCode, string aspectName, double weight)>
 			{
-
 				("MINIMAX_VALUE_CALCULATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
 				("MIN_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
 				("MAX_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
@@ -718,15 +728,15 @@ namespace AICourseTester.Services
 				("UNCLASSIFIED_ERROR", "Корректная обработка структуры дерева", 0.1),
 
 				("HEURISTIC_VALUE_CALCULATION_ERROR", "Расчёт эвристической функции", 1.0),
-
 				("HAMMING_HEURISTIC_CALCULATION_ERROR", "Расчёт расстояния Хемминга", 1.0),
-
 				("MANHATTAN_HEURISTIC_CALCULATION_ERROR", "Расчёт Манхэттенского расстояния", 1.0),
 
 				("PATH_COST_CALCULATION_ERROR", "Расчёт стоимости пути g(n)", 1.0),
 
 				("F_SCORE_CALCULATION_ERROR", "Расчёт оценочной функции f(n)", 1.0),
 				("F_FORMULA_CONSISTENCY_ERROR", "Расчёт оценочной функции f(n)", 1.0),
+
+				("DEPENDENT_VALUE_ERROR", "Расчёт оценочной функции f(n)", 0.4),
 
 				("NODE_EXPANSION_ORDER_ERROR", "Выбор узла для раскрытия в A*", 1.0),
 				("A_STAR_SEARCH_STRATEGY_ERROR", "Выбор узла для раскрытия в A*", 0.8)
@@ -760,6 +770,7 @@ namespace AICourseTester.Services
 					existingLink.Weight = weight;
 				}
 			}
+
 			var requiredLinkKeys = requiredLinks
 				.Select(link =>
 				{
