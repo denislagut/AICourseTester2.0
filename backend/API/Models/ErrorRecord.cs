@@ -8,6 +8,10 @@ namespace AICourseTester.Models
 	{
 		public int Id { get; set; }
 
+		public int? AnalysisRunId { get; set; }
+
+		public AnalysisRun? AnalysisRun { get; set; }
+
 		[MaxLength(64)]
 		public string TaskType { get; set; } = "AlphaBeta";
 

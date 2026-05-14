@@ -8,9 +8,9 @@ namespace AICourseTester.Services
 	public class AlphaBetaErrorAnalysisService : IAlphaBetaErrorAnalysisService
 	{
 		public ErrorAnalysisResult Analyze(
-	ProblemTree<ABNode> problem,
-	AlphaBetaSolutionDTO userSolution,
-	AlphaBetaSolutionDTO correctSolution)
+			ProblemTree<ABNode> problem,
+			AlphaBetaSolutionDTO userSolution,
+			AlphaBetaSolutionDTO correctSolution)
 		{
 			var result = new ErrorAnalysisResult();
 
