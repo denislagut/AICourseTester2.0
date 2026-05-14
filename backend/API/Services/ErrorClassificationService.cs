@@ -627,6 +627,34 @@ namespace AICourseTester.Services
 				},
 				new KnowledgeAspect
 				{
+					Name = "Различение ролей MIN и MAX",
+					Description = "Понимание различий между минимизирующим и максимизирующим уровнями дерева.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Определение момента отсечения",
+					Description = "Понимание момента, когда условие alpha-beta отсечения становится выполненным.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Последствия неверного отсечения",
+					Description = "Понимание того, как неверное отсечение влияет на значения узлов и итоговое решение.",
+					TopicName = "Минимакс и альфа-бета отсечение",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
+					Name = "Обработка равных значений f(n)",
+					Description = "Понимание допустимых вариантов раскрытия узлов при равных значениях оценочной функции.",
+					TopicName = "Алгоритм A*",
+					IsActive = true
+				},
+				new KnowledgeAspect
+				{
 					Name = "Расчёт эвристической функции",
 					Description = "Понимание назначения и расчёта эвристической функции h(n).",
 					TopicName = "Алгоритм A*",
@@ -722,6 +750,21 @@ namespace AICourseTester.Services
 				("PRUNING_PATH_CONFLICT_ERROR", "Согласованность решения", 1.0),
 
 				("SOLUTION_CONSISTENCY_ERROR", "Согласованность решения", 1.0),
+
+				("MIN_MAX_ROLE_CONFUSION_ERROR", "Различение ролей MIN и MAX", 1.0),
+				("MIN_LEVEL_AGGREGATION_ERROR", "Различение ролей MIN и MAX", 0.7),
+				("MAX_LEVEL_AGGREGATION_ERROR", "Различение ролей MIN и MAX", 0.7),
+
+				("EARLY_PRUNING_ERROR_TYPE", "Определение момента отсечения", 1.0),
+				("MISSED_PRUNING_ERROR_TYPE", "Определение момента отсечения", 0.8),
+				("PRUNING_LOGIC_ERROR", "Определение момента отсечения", 0.7),
+
+				("VALUE_PRUNING_DEPENDENCY_ERROR", "Последствия неверного отсечения", 1.0),
+				("PRUNING_PATH_CONFLICT_ERROR", "Последствия неверного отсечения", 0.7),
+				("SOLUTION_CONSISTENCY_ERROR", "Последствия неверного отсечения", 0.5),
+
+				("NODE_EXPANSION_ORDER_ERROR", "Обработка равных значений f(n)", 0.5),
+				("A_STAR_SEARCH_STRATEGY_ERROR", "Обработка равных значений f(n)", 0.4),
 
 				("TREE_STRUCTURE_PROCESSING_ERROR", "Корректная обработка структуры дерева", 1.0),
 

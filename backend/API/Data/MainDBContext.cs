@@ -14,6 +14,8 @@ namespace AICourseTester.Data
         public DbSet<Group> Groups { get; set; } = null!;
         public DbSet<UserGroups> UserGroups { get; set; } = null!;
 
+		public DbSet<AnalysisRun> AnalysisRuns { get; set; }
+
 		public DbSet<CausalErrorLink> CausalErrorLinks { get; set; }
 		public DbSet<ErrorRecord> ErrorRecords { get; set; }
 		public DbSet<ErrorType> ErrorTypes { get; set; }
@@ -61,7 +63,13 @@ namespace AICourseTester.Data
                 .Ignore(c => c.PhoneNumber)
                 .Ignore(c => c.PhoneNumberConfirmed);
 
-            modelBuilder.Entity<ErrorRecord>()
+			modelBuilder.Entity<AnalysisRun>()
+				.HasMany(r => r.ErrorRecords)
+				.WithOne(e => e.AnalysisRun)
+				.HasForeignKey(e => e.AnalysisRunId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			modelBuilder.Entity<ErrorRecord>()
                 .HasOne(e => e.AlphaBeta)
                 .WithMany(a => a.Errors)
                 .HasForeignKey(e => e.AlphaBetaId)
