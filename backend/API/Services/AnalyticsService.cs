@@ -1,7 +1,9 @@
 using AICourseTester.Data;
 using AICourseTester.DTO;
+using AICourseTester.Models;
 using AICourseTester.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AICourseTester.Services
 {
@@ -44,7 +46,7 @@ namespace AICourseTester.Services
 					.AsNoTracking()
 					.AverageAsync(g => g.GapScore);
 
-			return new AnalyticsSummaryDTO
+			var summary = new AnalyticsSummaryDTO
 			{
 				TotalStudents = totalStudents,
 				TotalGroups = await _context.Groups.AsNoTracking().CountAsync(),
@@ -55,6 +57,13 @@ namespace AICourseTester.Services
 					.AsNoTracking()
 					.CountAsync(e => e.SeverityScore >= HighSeverityThreshold)
 			};
+
+			await SaveGlobalSnapshotAsync(
+				summary,
+				await GetTopErrorTypesAsync(),
+				await GetTopKnowledgeGapsAsync());
+
+			return summary;
 		}
 
 		public async Task<List<TopErrorTypeDTO>> GetTopErrorTypesAsync()
@@ -151,7 +160,7 @@ namespace AICourseTester.Services
 			var errors = await LoadErrorsForUsersAsync(new[] { userId });
 			var gaps = await LoadKnowledgeGapsForUsersAsync(new[] { userId });
 
-			return new StudentAnalyticsDTO
+			var analytics = new StudentAnalyticsDTO
 			{
 				UserId = user.Id,
 				UserName = user.UserName,
@@ -165,6 +174,10 @@ namespace AICourseTester.Services
 				TopErrorTypes = BuildTopErrorTypes(errors),
 				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps)
 			};
+
+			await SaveStudentSnapshotAsync(analytics);
+
+			return analytics;
 		}
 
 		public async Task<GroupAnalyticsDTO?> GetGroupAnalyticsAsync(int groupId)
@@ -198,7 +211,7 @@ namespace AICourseTester.Services
 				? new List<Models.KnowledgeGap>()
 				: await LoadKnowledgeGapsForUsersAsync(userIds);
 
-			return new GroupAnalyticsDTO
+			var analytics = new GroupAnalyticsDTO
 			{
 				GroupId = group.Id,
 				GroupName = group.Name,
@@ -210,6 +223,103 @@ namespace AICourseTester.Services
 				TopErrorTypes = BuildTopErrorTypes(errors),
 				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps)
 			};
+
+			await SaveGroupSnapshotAsync(analytics);
+
+			return analytics;
+		}
+
+		public async Task<List<AnalyticsSnapshotDTO>> GetGlobalSnapshotsAsync()
+		{
+			return await _context.AnalyticsSnapshots
+				.AsNoTracking()
+				.Where(s => s.ScopeType == "Global")
+				.OrderByDescending(s => s.CreatedAt)
+				.Select(s => new AnalyticsSnapshotDTO
+				{
+					Id = s.Id,
+					ScopeType = s.ScopeType,
+					UserId = s.UserId,
+					GroupId = s.GroupId,
+					TotalStudents = s.TotalStudents,
+					TotalGroups = s.TotalGroups,
+					TotalErrors = s.TotalErrors,
+					TotalKnowledgeGaps = s.TotalKnowledgeGaps,
+					AverageGapScore = s.AverageGapScore,
+					HighSeverityErrorsCount = s.HighSeverityErrorsCount,
+					TopErrorTypesJson = s.TopErrorTypesJson,
+					TopKnowledgeGapsJson = s.TopKnowledgeGapsJson,
+					CreatedAt = s.CreatedAt
+				})
+				.ToListAsync();
+		}
+
+		public async Task<List<AnalyticsSnapshotDTO>?> GetStudentSnapshotsAsync(string userId)
+		{
+			var studentExists = await _context.Users
+				.AsNoTracking()
+				.AnyAsync(u => u.Id == userId);
+
+			if (!studentExists)
+			{
+				return null;
+			}
+
+			return await _context.AnalyticsSnapshots
+				.AsNoTracking()
+				.Where(s => s.ScopeType == "Student" && s.UserId == userId)
+				.OrderByDescending(s => s.CreatedAt)
+				.Select(s => new AnalyticsSnapshotDTO
+				{
+					Id = s.Id,
+					ScopeType = s.ScopeType,
+					UserId = s.UserId,
+					GroupId = s.GroupId,
+					TotalStudents = s.TotalStudents,
+					TotalGroups = s.TotalGroups,
+					TotalErrors = s.TotalErrors,
+					TotalKnowledgeGaps = s.TotalKnowledgeGaps,
+					AverageGapScore = s.AverageGapScore,
+					HighSeverityErrorsCount = s.HighSeverityErrorsCount,
+					TopErrorTypesJson = s.TopErrorTypesJson,
+					TopKnowledgeGapsJson = s.TopKnowledgeGapsJson,
+					CreatedAt = s.CreatedAt
+				})
+				.ToListAsync();
+		}
+
+		public async Task<List<AnalyticsSnapshotDTO>?> GetGroupSnapshotsAsync(int groupId)
+		{
+			var groupExists = await _context.Groups
+				.AsNoTracking()
+				.AnyAsync(g => g.Id == groupId);
+
+			if (!groupExists)
+			{
+				return null;
+			}
+
+			return await _context.AnalyticsSnapshots
+				.AsNoTracking()
+				.Where(s => s.ScopeType == "Group" && s.GroupId == groupId)
+				.OrderByDescending(s => s.CreatedAt)
+				.Select(s => new AnalyticsSnapshotDTO
+				{
+					Id = s.Id,
+					ScopeType = s.ScopeType,
+					UserId = s.UserId,
+					GroupId = s.GroupId,
+					TotalStudents = s.TotalStudents,
+					TotalGroups = s.TotalGroups,
+					TotalErrors = s.TotalErrors,
+					TotalKnowledgeGaps = s.TotalKnowledgeGaps,
+					AverageGapScore = s.AverageGapScore,
+					HighSeverityErrorsCount = s.HighSeverityErrorsCount,
+					TopErrorTypesJson = s.TopErrorTypesJson,
+					TopKnowledgeGapsJson = s.TopKnowledgeGapsJson,
+					CreatedAt = s.CreatedAt
+				})
+				.ToListAsync();
 		}
 
 		private async Task<List<Models.ErrorRecord>> LoadErrorsForUsersAsync(IReadOnlyCollection<string> userIds)
@@ -288,6 +398,78 @@ namespace AICourseTester.Services
 			return gaps.Count == 0
 				? 0
 				: Math.Round(gaps.Average(g => g.GapScore), 2);
+		}
+
+		private async Task SaveGlobalSnapshotAsync(
+			AnalyticsSummaryDTO summary,
+			List<TopErrorTypeDTO> topErrorTypes,
+			List<TopKnowledgeGapDTO> topKnowledgeGaps)
+		{
+			await _context.AnalyticsSnapshots
+				.Where(s => s.ScopeType == "Global")
+				.ExecuteDeleteAsync();
+
+			_context.AnalyticsSnapshots.Add(new AnalyticsSnapshot
+			{
+				ScopeType = "Global",
+				TotalStudents = summary.TotalStudents,
+				TotalGroups = summary.TotalGroups,
+				TotalErrors = summary.TotalErrors,
+				TotalKnowledgeGaps = summary.TotalKnowledgeGaps,
+				AverageGapScore = summary.AverageGapScore,
+				HighSeverityErrorsCount = summary.HighSeverityErrorsCount,
+				TopErrorTypesJson = JsonSerializer.Serialize(topErrorTypes),
+				TopKnowledgeGapsJson = JsonSerializer.Serialize(topKnowledgeGaps),
+				CreatedAt = DateTime.UtcNow
+			});
+
+			await _context.SaveChangesAsync();
+		}
+
+		private async Task SaveStudentSnapshotAsync(StudentAnalyticsDTO analytics)
+		{
+			await _context.AnalyticsSnapshots
+				.Where(s => s.ScopeType == "Student" && s.UserId == analytics.UserId)
+				.ExecuteDeleteAsync();
+
+			_context.AnalyticsSnapshots.Add(new AnalyticsSnapshot
+			{
+				ScopeType = "Student",
+				UserId = analytics.UserId,
+				GroupId = analytics.GroupId,
+				TotalErrors = analytics.TotalErrors,
+				TotalKnowledgeGaps = analytics.TotalKnowledgeGaps,
+				AverageGapScore = analytics.AverageGapScore,
+				HighSeverityErrorsCount = analytics.HighSeverityErrorsCount,
+				TopErrorTypesJson = JsonSerializer.Serialize(analytics.TopErrorTypes),
+				TopKnowledgeGapsJson = JsonSerializer.Serialize(analytics.TopKnowledgeGaps),
+				CreatedAt = DateTime.UtcNow
+			});
+
+			await _context.SaveChangesAsync();
+		}
+
+		private async Task SaveGroupSnapshotAsync(GroupAnalyticsDTO analytics)
+		{
+			await _context.AnalyticsSnapshots
+				.Where(s => s.ScopeType == "Group" && s.GroupId == analytics.GroupId)
+				.ExecuteDeleteAsync();
+
+			_context.AnalyticsSnapshots.Add(new AnalyticsSnapshot
+			{
+				ScopeType = "Group",
+				GroupId = analytics.GroupId,
+				TotalStudents = analytics.StudentsCount,
+				TotalErrors = analytics.TotalErrors,
+				TotalKnowledgeGaps = analytics.TotalKnowledgeGaps,
+				AverageGapScore = analytics.AverageGapScore,
+				HighSeverityErrorsCount = analytics.HighSeverityErrorsCount,
+				TopErrorTypesJson = JsonSerializer.Serialize(analytics.TopErrorTypes),
+				TopKnowledgeGapsJson = JsonSerializer.Serialize(analytics.TopKnowledgeGaps),
+				CreatedAt = DateTime.UtcNow
+			});
+
+			await _context.SaveChangesAsync();
 		}
 
 		private static string? BuildFullName(params string?[] parts)

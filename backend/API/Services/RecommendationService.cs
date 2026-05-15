@@ -29,7 +29,7 @@ namespace AICourseTester.Services
 			var gaps = await LoadKnowledgeGapsForUsersAsync(new[] { userId });
 			var aspects = await LoadKnowledgeAspectsAsync(gaps);
 
-			return gaps
+			var recommendations = gaps
 				.Select(g => new
 				{
 					Gap = g,
@@ -47,6 +47,10 @@ namespace AICourseTester.Services
 				.OrderByDescending(r => GetPriorityRank(r.Priority))
 				.ThenByDescending(r => r.GapScore)
 				.ToList();
+
+			await SaveStudentRecommendationsAsync(userId, recommendations);
+
+			return recommendations;
 		}
 
 		public async Task<List<RecommendationDTO>?> GetGroupRecommendationsAsync(int groupId)
@@ -68,13 +72,14 @@ namespace AICourseTester.Services
 
 			if (userIds.Count == 0)
 			{
+				await SaveGroupRecommendationsAsync(groupId, new List<RecommendationDTO>());
 				return new List<RecommendationDTO>();
 			}
 
 			var gaps = await LoadKnowledgeGapsForUsersAsync(userIds);
 			var aspects = await LoadKnowledgeAspectsAsync(gaps);
 
-			return gaps
+			var recommendations = gaps
 				.Select(g => new
 				{
 					Gap = g,
@@ -98,6 +103,135 @@ namespace AICourseTester.Services
 				.OrderByDescending(r => GetPriorityRank(r.Priority))
 				.ThenByDescending(r => r.GapScore)
 				.ToList();
+
+			await SaveGroupRecommendationsAsync(groupId, recommendations);
+
+			return recommendations;
+		}
+
+		public async Task<List<GeneratedRecommendationDTO>?> GetStudentRecommendationHistoryAsync(string userId)
+		{
+			var studentExists = await _context.Users
+				.AsNoTracking()
+				.AnyAsync(u => u.Id == userId);
+
+			if (!studentExists)
+			{
+				return null;
+			}
+
+			return await _context.GeneratedRecommendations
+				.AsNoTracking()
+				.Where(r => r.TargetType == "Student" && r.UserId == userId)
+				.OrderByDescending(r => r.CreatedAt)
+				.Select(r => new GeneratedRecommendationDTO
+				{
+					Id = r.Id,
+					TargetType = r.TargetType,
+					UserId = r.UserId,
+					GroupId = r.GroupId,
+					KnowledgeAspectId = r.KnowledgeAspectId,
+					Title = r.Title,
+					Description = r.Description,
+					Priority = r.Priority,
+					TopicName = r.TopicName,
+					GapScore = r.GapScore,
+					RelatedErrorCount = r.RelatedErrorCount,
+					AffectedStudentsCount = r.AffectedStudentsCount,
+					CreatedAt = r.CreatedAt
+				})
+				.ToListAsync();
+		}
+
+		public async Task<List<GeneratedRecommendationDTO>?> GetGroupRecommendationHistoryAsync(int groupId)
+		{
+			var groupExists = await _context.Groups
+				.AsNoTracking()
+				.AnyAsync(g => g.Id == groupId);
+
+			if (!groupExists)
+			{
+				return null;
+			}
+
+			return await _context.GeneratedRecommendations
+				.AsNoTracking()
+				.Where(r => r.TargetType == "Group" && r.GroupId == groupId)
+				.OrderByDescending(r => r.CreatedAt)
+				.Select(r => new GeneratedRecommendationDTO
+				{
+					Id = r.Id,
+					TargetType = r.TargetType,
+					UserId = r.UserId,
+					GroupId = r.GroupId,
+					KnowledgeAspectId = r.KnowledgeAspectId,
+					Title = r.Title,
+					Description = r.Description,
+					Priority = r.Priority,
+					TopicName = r.TopicName,
+					GapScore = r.GapScore,
+					RelatedErrorCount = r.RelatedErrorCount,
+					AffectedStudentsCount = r.AffectedStudentsCount,
+					CreatedAt = r.CreatedAt
+				})
+				.ToListAsync();
+		}
+
+		private async Task SaveStudentRecommendationsAsync(string userId, IReadOnlyCollection<RecommendationDTO> recommendations)
+		{
+			await _context.GeneratedRecommendations
+				.Where(r => r.TargetType == "Student" && r.UserId == userId)
+				.ExecuteDeleteAsync();
+
+			await SaveGeneratedRecommendationsAsync(
+				recommendations,
+				userId: userId,
+				groupId: null);
+		}
+
+		private async Task SaveGroupRecommendationsAsync(int groupId, IReadOnlyCollection<RecommendationDTO> recommendations)
+		{
+			await _context.GeneratedRecommendations
+				.Where(r => r.TargetType == "Group" && r.GroupId == groupId)
+				.ExecuteDeleteAsync();
+
+			await SaveGeneratedRecommendationsAsync(
+				recommendations,
+				userId: null,
+				groupId: groupId);
+		}
+
+		private async Task SaveGeneratedRecommendationsAsync(
+			IReadOnlyCollection<RecommendationDTO> recommendations,
+			string? userId,
+			int? groupId)
+		{
+			if (recommendations.Count == 0)
+			{
+				await _context.SaveChangesAsync();
+				return;
+			}
+
+			var createdAt = DateTime.UtcNow;
+
+			var entities = recommendations.Select(r => new GeneratedRecommendation
+			{
+				TargetType = r.TargetType,
+				UserId = userId,
+				GroupId = groupId,
+				KnowledgeAspectId = r.KnowledgeAspectId,
+				Title = r.Title,
+				Description = r.Description,
+				Priority = r.Priority,
+				TopicName = r.TopicName,
+				GapScore = r.GapScore,
+				RelatedErrorCount = r.RelatedErrorCount,
+				AffectedStudentsCount = r.AffectedStudentsCount,
+				CreatedAt = createdAt
+			}).ToList();
+
+			await _context.GeneratedRecommendations.AddRangeAsync(entities);
+			await _context.SaveChangesAsync();
 		}
 
 		private async Task<List<KnowledgeGap>> LoadKnowledgeGapsForUsersAsync(IReadOnlyCollection<string> userIds)

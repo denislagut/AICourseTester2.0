@@ -60,5 +60,37 @@ namespace AICourseTester.Controllers
 
 			return Ok(analytics);
 		}
+
+		[HttpGet("Snapshots/Global")]
+		public async Task<ActionResult<List<AnalyticsSnapshotDTO>>> GetGlobalSnapshots()
+		{
+			return Ok(await _analyticsService.GetGlobalSnapshotsAsync());
+		}
+
+		[HttpGet("Snapshots/Students/{userId}")]
+		public async Task<ActionResult<List<AnalyticsSnapshotDTO>>> GetStudentSnapshots(string userId)
+		{
+			var snapshots = await _analyticsService.GetStudentSnapshotsAsync(userId);
+
+			if (snapshots == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(snapshots);
+		}
+
+		[HttpGet("Snapshots/Groups/{groupId:int}")]
+		public async Task<ActionResult<List<AnalyticsSnapshotDTO>>> GetGroupSnapshots(int groupId)
+		{
+			var snapshots = await _analyticsService.GetGroupSnapshotsAsync(groupId);
+
+			if (snapshots == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(snapshots);
+		}
 	}
 }

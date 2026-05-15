@@ -30,10 +30,36 @@ namespace AICourseTester.Controllers
 			return Ok(recommendations);
 		}
 
+		[HttpGet("Students/{userId}/History")]
+		public async Task<ActionResult<List<GeneratedRecommendationDTO>>> GetStudentRecommendationHistory(string userId)
+		{
+			var recommendations = await _recommendationService.GetStudentRecommendationHistoryAsync(userId);
+
+			if (recommendations == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(recommendations);
+		}
+
 		[HttpGet("Groups/{groupId:int}")]
 		public async Task<ActionResult<List<RecommendationDTO>>> GetGroupRecommendations(int groupId)
 		{
 			var recommendations = await _recommendationService.GetGroupRecommendationsAsync(groupId);
+
+			if (recommendations == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(recommendations);
+		}
+
+		[HttpGet("Groups/{groupId:int}/History")]
+		public async Task<ActionResult<List<GeneratedRecommendationDTO>>> GetGroupRecommendationHistory(int groupId)
+		{
+			var recommendations = await _recommendationService.GetGroupRecommendationHistoryAsync(groupId);
 
 			if (recommendations == null)
 			{

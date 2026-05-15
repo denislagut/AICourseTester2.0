@@ -157,6 +157,8 @@ builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationServi
 builder.Services.AddScoped<IKnowledgeGapDetectionService, KnowledgeGapDetectionService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
+builder.Services.AddScoped<IReportsService, ReportsService>();
+builder.Services.AddScoped<IReportExportService, ReportExportService>();
 
 var app = builder.Build();
 

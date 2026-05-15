@@ -9,5 +9,8 @@ namespace AICourseTester.Services.Interfaces
 		Task<List<TopKnowledgeGapDTO>> GetTopKnowledgeGapsAsync();
 		Task<StudentAnalyticsDTO?> GetStudentAnalyticsAsync(string userId);
 		Task<GroupAnalyticsDTO?> GetGroupAnalyticsAsync(int groupId);
+		Task<List<AnalyticsSnapshotDTO>> GetGlobalSnapshotsAsync();
+		Task<List<AnalyticsSnapshotDTO>?> GetStudentSnapshotsAsync(string userId);
+		Task<List<AnalyticsSnapshotDTO>?> GetGroupSnapshotsAsync(int groupId);
 	}
 }
