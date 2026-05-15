@@ -153,6 +153,7 @@ builder.Services.AddScoped<IAlphaBetaErrorAnalysisService, AlphaBetaErrorAnalysi
 builder.Services.AddScoped<IFifteenPuzzleErrorAnalysisService, FifteenPuzzleErrorAnalysisService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 builder.Services.AddScoped<IKnowledgeGapDetectionService, KnowledgeGapDetectionService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 
 var app = builder.Build();
 
