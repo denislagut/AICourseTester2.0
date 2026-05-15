@@ -29,17 +29,18 @@ namespace AICourseTester.Services
 			AggregatePatterns(result);
 
 			result.TotalErrors = result.Errors.Count;
+
 			result.NodeErrorsCount = result.Errors.Count(e =>
-				e.Code == "H_INCORRECT" ||
-				e.Code == "G_INCORRECT" ||
-				e.Code == "F_INCORRECT" ||
-				e.Code == "F_FORMULA_INCONSISTENCY" ||
-				e.Code == "F_DERIVED_FROM_INCORRECT_COMPONENTS");
+				e.Code == ErrorCodes.HIncorrect ||
+				e.Code == ErrorCodes.GIncorrect ||
+				e.Code == ErrorCodes.FIncorrect ||
+				e.Code == ErrorCodes.FFormulaInconsistency ||
+				e.Code == ErrorCodes.FDerivedFromIncorrectComponents);
 
 			result.PathErrorsCount = result.Errors.Count(e =>
-				e.Code == "OPEN_ORDER_INCORRECT" ||
-				e.Code == "NODE_MISSING" ||
-				e.Code == "NODE_UNEXPECTED");
+				e.Code == ErrorCodes.OpenOrderIncorrect ||
+				e.Code == ErrorCodes.NodeMissing ||
+				e.Code == ErrorCodes.NodeUnexpected);
 
 			result.PruningRelatedCount = 0;
 
@@ -47,10 +48,10 @@ namespace AICourseTester.Services
 		}
 
 		private void AnalyzeValues(
-		Dictionary<int, ANodeDTO> userNodes,
-		Dictionary<int, ANodeDTO> correctNodes,
-		int heuristic,
-		ErrorAnalysisResult result)
+			Dictionary<int, ANodeDTO> userNodes,
+			Dictionary<int, ANodeDTO> correctNodes,
+			int heuristic,
+			ErrorAnalysisResult result)
 		{
 			foreach (var pair in correctNodes)
 			{
@@ -61,13 +62,13 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "NODE_MISSING",
+						Code = ErrorCodes.NodeMissing,
 						Message = $"Узел {nodeId} отсутствует в пользовательском решении.",
 						NodeId = nodeId,
 						ElementType = "PuzzleNode",
 						ExpectedA = expected.F,
 						SeverityScore = 2.0,
-						GroupKey = "A_STAR_NODE_MISSING"
+						GroupKey = "A_STAR_NODE_MISSING" 
 					});
 
 					continue;
@@ -76,17 +77,13 @@ namespace AICourseTester.Services
 				var hWrong = expected.H != actual.H;
 				var gWrong = expected.G != actual.G;
 				var fWrong = expected.F != actual.F;
-
-				// Проверяем именно формулу, введённую студентом:
-				// если actual.F == actual.G + actual.H, то формула понята,
-				// даже если h или g сами по себе неверны.
 				var formulaWrong = actual.F != actual.G + actual.H;
 
 				if (hWrong)
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "H_INCORRECT",
+						Code = ErrorCodes.HIncorrect,
 						Message = $"В узле {nodeId} неверное значение h.",
 						NodeId = nodeId,
 						ElementType = "PuzzleNode",
@@ -101,7 +98,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "G_INCORRECT",
+						Code = ErrorCodes.GIncorrect,
 						Message = $"В узле {nodeId} неверное значение g.",
 						NodeId = nodeId,
 						ElementType = "PuzzleNode",
@@ -116,7 +113,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "F_FORMULA_INCONSISTENCY",
+						Code = ErrorCodes.FFormulaInconsistency,
 						Message = $"В узле {nodeId} нарушена формула f = g + h.",
 						NodeId = nodeId,
 						ElementType = "PuzzleNode",
@@ -130,7 +127,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "F_DERIVED_FROM_INCORRECT_COMPONENTS",
+						Code = ErrorCodes.FDerivedFromIncorrectComponents,
 						Message = $"В узле {nodeId} значение f отличается от эталона из-за ошибки в h или g.",
 						NodeId = nodeId,
 						ElementType = "PuzzleNode",
@@ -144,7 +141,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "F_INCORRECT",
+						Code = ErrorCodes.FIncorrect,
 						Message = $"В узле {nodeId} неверное значение f.",
 						NodeId = nodeId,
 						ElementType = "PuzzleNode",
@@ -158,48 +155,17 @@ namespace AICourseTester.Services
 		}
 
 		private void AnalyzeOpenOrder(
-		Dictionary<int, ANodeDTO> userNodes,
-		Dictionary<int, ANodeDTO> correctNodes,
-		ErrorAnalysisResult result)
+			Dictionary<int, ANodeDTO> userNodes,
+			Dictionary<int, ANodeDTO> correctNodes,
+			ErrorAnalysisResult result)
 		{
 			var correctOpened = correctNodes.Values
 				.Where(n => n.OpenOrder >= 0)
 				.OrderBy(n => n.OpenOrder)
 				.ToList();
 
-			var incorrectlyOpenedOpenListNodeIds = new HashSet<int>();
-
-			// Случай 1:
-			// Узел есть в эталонном решении, но должен был остаться открытым (OpenOrder = -1),
-			// а студент его раскрыл.
-			foreach (var userNode in userNodes.Values.Where(n => n.OpenOrder >= 0))
-			{
-				if (correctNodes.TryGetValue(userNode.Id, out var correctNode) &&
-					correctNode.OpenOrder < 0)
-				{
-					incorrectlyOpenedOpenListNodeIds.Add(userNode.Id);
-
-					result.Errors.Add(new AnalyzedError
-					{
-						Code = "NODE_UNEXPECTED",
-						Message = $"Лишнее раскрытие узла {userNode.Id}. Узел должен был остаться в списке открытых.",
-						NodeId = userNode.Id,
-						ActualPathNodeId = userNode.Id,
-						ElementType = "PuzzleNode",
-						SeverityScore = 3.0,
-						GroupKey = "A_STAR_EXTRA_EXPANSION"
-					});
-				}
-			}
-
-			// Для сравнения порядка исключаем узлы, которые уже получили ошибку
-			// "должен был остаться открытым", чтобы не было дублей NODE_UNEXPECTED.
 			var userOpened = userNodes.Values
 				.Where(n => n.OpenOrder >= 0)
-				.Where(n => !incorrectlyOpenedOpenListNodeIds.Contains(n.Id))
-				.Where(n =>
-					!correctNodes.TryGetValue(n.Id, out var correctNode) ||
-					correctNode.OpenOrder >= 0)
 				.OrderBy(n => n.OpenOrder)
 				.ToList();
 
@@ -212,18 +178,8 @@ namespace AICourseTester.Services
 
 				if (expectedNode == null && actualNode != null)
 				{
-					result.Errors.Add(new AnalyzedError
-					{
-						Code = "NODE_UNEXPECTED",
-						Message = $"Лишнее раскрытие узла {actualNode.Id}.",
-						NodeId = actualNode.Id,
-						PathStepIndex = i,
-						ActualPathNodeId = actualNode.Id,
-						ElementType = "PuzzleNode",
-						SeverityScore = 3.0,
-						GroupKey = "A_STAR_EXTRA_EXPANSION"
-					});
-
+					// Эталонный solver мог остановиться раньше.
+					// Дополнительное раскрытие не считаем ошибкой само по себе.
 					continue;
 				}
 
@@ -231,7 +187,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "NODE_MISSING",
+						Code = ErrorCodes.NodeMissing,
 						Message = $"На шаге {i} должен быть раскрыт узел {expectedNode.Id}.",
 						NodeId = expectedNode.Id,
 						PathStepIndex = i,
@@ -244,22 +200,33 @@ namespace AICourseTester.Services
 					continue;
 				}
 
-				if (expectedNode != null && actualNode != null && expectedNode.Id != actualNode.Id)
+				if (expectedNode == null || actualNode == null)
+					continue;
+
+				if (expectedNode.Id == actualNode.Id)
+					continue;
+
+				if (IsEquivalentExpansion(actualNode, expectedNode))
+					continue;
+
+				result.Errors.Add(new AnalyzedError
 				{
-					result.Errors.Add(new AnalyzedError
-					{
-						Code = "OPEN_ORDER_INCORRECT",
-						Message = $"На шаге {i} раскрыт неверный узел. Ожидался узел {expectedNode.Id}, получен узел {actualNode.Id}.",
-						NodeId = actualNode.Id,
-						PathStepIndex = i,
-						ExpectedPathNodeId = expectedNode.Id,
-						ActualPathNodeId = actualNode.Id,
-						ElementType = "PuzzleNode",
-						SeverityScore = 3.5,
-						GroupKey = "A_STAR_OPEN_ORDER"
-					});
-				}
+					Code = ErrorCodes.OpenOrderIncorrect ,
+					Message = $"На шаге {i} раскрыт неверный узел. Ожидался узел {expectedNode.Id}, получен узел {actualNode.Id}.",
+					NodeId = actualNode.Id,
+					PathStepIndex = i,
+					ExpectedPathNodeId = expectedNode.Id,
+					ActualPathNodeId = actualNode.Id,
+					ElementType = "PuzzleNode",
+					SeverityScore = 3.5,
+					GroupKey = "A_STAR_OPEN_ORDER"
+				});
 			}
+		}
+
+		private bool IsEquivalentExpansion(ANodeDTO actualNode, ANodeDTO expectedNode)
+		{
+			return actualNode.F == expectedNode.F;
 		}
 
 		private void AggregatePatterns(ErrorAnalysisResult result)

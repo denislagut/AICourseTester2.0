@@ -644,7 +644,7 @@ async function submitSolution(userSolution, isTrainingMode, taskData) {
 }
 
 function displaySolutionFeedback(taskData) {
-    console.log('DISPLAY FEEDBACK VERSION 2');
+    console.log('DISPLAY FEEDBACK VERSION 3');
     console.log('USER SOLUTION:', taskData.userSolution);
     console.log('CORRECT SOLUTION:', taskData.solution);
 
@@ -663,6 +663,46 @@ function displaySolutionFeedback(taskData) {
         g: 0,
         extraNodes: 0,
         wrongOrder: 0
+    };
+
+    const getOpenOrder = node => Number(getNodeValue(node, 'openOrder'));
+    const getF = node => Number(getNodeValue(node, 'f'));
+
+    const isEquivalentExpansion = (userNode, expectedNode) => {
+        if (!userNode || !expectedNode) {
+            return false;
+        }
+
+        const userF = getF(userNode);
+        const expectedF = getF(expectedNode);
+
+        return !Number.isNaN(userF) &&
+            !Number.isNaN(expectedF) &&
+            userF === expectedF;
+    };
+
+    const correctOpened = correctSolution
+        .filter(n => getOpenOrder(n) >= 0)
+        .sort((a, b) => getOpenOrder(a) - getOpenOrder(b));
+
+    const userOpened = userSolution
+        .filter(n => getOpenOrder(n) >= 0)
+        .sort((a, b) => getOpenOrder(a) - getOpenOrder(b));
+
+    const isAllowedAdditionalExpansion = userNode => {
+        const userOrder = getOpenOrder(userNode);
+
+        if (userOrder < 0) {
+            return false;
+        }
+
+        const expectedAtSameStep = correctOpened[userOrder];
+
+        if (!expectedAtSameStep) {
+            return true;
+        }
+
+        return isEquivalentExpansion(userNode, expectedAtSameStep);
     };
 
     document.querySelectorAll('.heuristic-input').forEach(input => {
@@ -684,23 +724,39 @@ function displaySolutionFeedback(taskData) {
 
         nodeElement.classList.add('correct-node');
 
-        const correctOpenOrder = Number(getNodeValue(correctNode, 'openOrder'));
-        const userOpenOrder = userNode ? Number(getNodeValue(userNode, 'openOrder')) : -1;
+        const correctOpenOrder = getOpenOrder(correctNode);
+        const userOpenOrder = userNode ? getOpenOrder(userNode) : -1;
+
+        const expectedAtUserStep = userOpenOrder >= 0 ? correctOpened[userOpenOrder] : null;
+        const isEquivalentAtStep = userNode && expectedAtUserStep
+            ? isEquivalentExpansion(userNode, expectedAtUserStep)
+            : false;
+
         console.log('ORDER CHECK', {
             nodeId: correctNodeId,
             correctOpenOrder,
             userOpenOrder,
-            isExtraOpen: correctOpenOrder < 0 && userOpenOrder >= 0,
-            isWrongOrder: correctOpenOrder >= 0 && userOpenOrder >= 0 && correctOpenOrder !== userOpenOrder
+            expectedAtUserStepId: expectedAtUserStep ? getNodeId(expectedAtUserStep) : null,
+            isEquivalentAtStep,
+            isAllowedAdditional: userNode ? isAllowedAdditionalExpansion(userNode) : false
         });
 
-        if (correctOpenOrder < 0 && userOpenOrder >= 0) {
+        if (
+            correctOpenOrder < 0 &&
+            userOpenOrder >= 0 &&
+            !isAllowedAdditionalExpansion(userNode)
+        ) {
             nodeElement.classList.add('error-node');
             errorCounts.extraNodes++;
             isCorrect = false;
         }
 
-        if (correctOpenOrder >= 0 && userOpenOrder >= 0 && correctOpenOrder !== userOpenOrder) {
+        if (
+            correctOpenOrder >= 0 &&
+            userOpenOrder >= 0 &&
+            correctOpenOrder !== userOpenOrder &&
+            !isEquivalentAtStep
+        ) {
             nodeElement.classList.add('error-node');
             errorCounts.wrongOrder++;
             isCorrect = false;
@@ -711,13 +767,7 @@ function displaySolutionFeedback(taskData) {
                 `.heuristic-input[data-node-id="${correctNodeId}"][data-param="${param}"]`
             );
 
-            if (!input) {
-                return;
-            }
-
-            // Если узла нет в ответе пользователя, не считаем это ошибкой h/f/g.
-            // Это должна быть отдельная ошибка структуры/стратегии.
-            if (!userNode) {
+            if (!input || !userNode) {
                 return;
             }
 
@@ -745,9 +795,14 @@ function displaySolutionFeedback(taskData) {
         const userNodeId = getNodeId(userNode);
         const correctNode = correctSolution.find(c => Number(getNodeId(c)) === Number(userNodeId));
         const nodeElement = document.querySelector(`.tree-node[data-node-id="${userNodeId}"]`);
-        const userOpenOrder = Number(getNodeValue(userNode, 'openOrder'));
+        const userOpenOrder = getOpenOrder(userNode);
 
-        if (!correctNode && nodeElement && userOpenOrder >= 0) {
+        if (
+            !correctNode &&
+            nodeElement &&
+            userOpenOrder >= 0 &&
+            !isAllowedAdditionalExpansion(userNode)
+        ) {
             nodeElement.classList.add('error-node');
             errorCounts.extraNodes++;
             isCorrect = false;
@@ -757,7 +812,7 @@ function displaySolutionFeedback(taskData) {
     if (isCorrect) {
         messageElement.classList.remove('error');
         messageElement.classList.add('success');
-        messageElement.innerHTML = 'Решение правильное! Все значения и порядок раскрытия верны.';
+        messageElement.innerHTML = 'Решение правильное! Все значения и допустимый порядок раскрытия верны.';
     } else {
         messageElement.classList.remove('success');
         messageElement.classList.add('error');

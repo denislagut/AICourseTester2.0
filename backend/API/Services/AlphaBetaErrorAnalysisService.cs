@@ -8,9 +8,9 @@ namespace AICourseTester.Services
 	public class AlphaBetaErrorAnalysisService : IAlphaBetaErrorAnalysisService
 	{
 		public ErrorAnalysisResult Analyze(
-	ProblemTree<ABNode> problem,
-	AlphaBetaSolutionDTO userSolution,
-	AlphaBetaSolutionDTO correctSolution)
+			ProblemTree<ABNode> problem,
+			AlphaBetaSolutionDTO userSolution,
+			AlphaBetaSolutionDTO correctSolution)
 		{
 			var result = new ErrorAnalysisResult();
 
@@ -25,25 +25,25 @@ namespace AICourseTester.Services
 
 			result.TotalErrors = result.Errors.Count;
 			result.NodeErrorsCount = result.Errors.Count(e =>
-				e.Code.StartsWith("NODE") ||
-				e.Code == "MIN_LEVEL_CONFUSION" ||
-				e.Code == "ROOT_MAX_CONFUSION" ||
-				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING");
+				IsNodeError(e.Code) ||
+				e.Code == ErrorCodes.MinLevelConfusion ||
+				e.Code == ErrorCodes.RootMaxConfusion ||
+				e.Code == ErrorCodes.ValueAffectedByWrongPruning);
 			result.PathErrorsCount = result.Errors.Count(e =>
-				e.Code.StartsWith("PATH") ||
-				e.Code == "VALUE_CORRECT_PATH_WRONG" ||
-				e.Code == "PATH_NOT_MAXIMIZING_ROOT_VALUE" ||
-				e.Code == "VALUES_AND_PRUNING_CORRECT_PATH_WRONG");
+				IsPathError(e.Code));
 			result.PruningRelatedCount = result.Errors.Count(e =>
-				e.Code.StartsWith("PRUN") ||
-				e.Code.Contains("PRUNE") ||
-				e.Code == "EARLY_PRUNING_ERROR" ||
-				e.Code == "MISSED_PRUNING_ERROR" ||
-				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING" ||
-				e.Code == "VALUES_CORRECT_PRUNING_WRONG" ||
-				e.Code == "PRUNING_CORRECT_RESULT_WRONG_REASON");
+				IsPruningError(e.Code));
 
 			return result;
+		}
+
+		private bool IsNodeError(string code)
+		{
+			return code == ErrorCodes.NodeAIncorrect ||
+				   code == ErrorCodes.NodeBIncorrect ||
+				   code == ErrorCodes.NodeABIncorrect ||
+				   code == ErrorCodes.NodeMissing ||
+				   code == ErrorCodes.NodeUnexpected;
 		}
 
 		private Dictionary<int, NodeMeta> BuildNodeMeta(ABNode root)
@@ -116,7 +116,7 @@ namespace AICourseTester.Services
 
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "NODE_MISSING",
+						Code = ErrorCodes.NodeMissing,
 						Message = $"Не заполнен узел {nodeId}.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -167,7 +167,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "NODE_AB_INCORRECT",
+						Code = ErrorCodes.NodeABIncorrect,
 						Message = $"В узле {nodeId} неверны значения A и B.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -188,7 +188,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "NODE_A_INCORRECT",
+						Code = ErrorCodes.NodeAIncorrect,
 						Message = $"В узле {nodeId} неверно значение A.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -207,7 +207,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "NODE_B_INCORRECT",
+						Code = ErrorCodes.NodeBIncorrect,
 						Message = $"В узле {nodeId} неверно значение B.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -245,7 +245,7 @@ namespace AICourseTester.Services
 
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "NODE_UNEXPECTED",
+					Code = ErrorCodes.NodeUnexpected,
 					Message = $"Узел {nodeId} не ожидался в ответе.",
 					NodeId = nodeId,
 					TreeLevel = meta?.Depth,
@@ -274,7 +274,7 @@ namespace AICourseTester.Services
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "PATH_MISSING",
+					Code = ErrorCodes.PathMissing,
 					Message = "Оптимальный путь не указан.",
 					ElementType = "PathStep",
 					SeverityScore = 3.0,
@@ -291,7 +291,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "PATH_STEP_INCORRECT",
+						Code = ErrorCodes.PathStepIncorrect,
 						Message = $"На шаге {i + 1} выбран неверный узел пути.",
 						ElementType = "PathStep",
 						PathStepIndex = i,
@@ -307,7 +307,7 @@ namespace AICourseTester.Services
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "PATH_INCOMPLETE",
+					Code = ErrorCodes.PathIncomplete,
 					Message = "Путь указан не полностью.",
 					ElementType = "PathStep",
 					SeverityScore = 2.0,
@@ -319,7 +319,7 @@ namespace AICourseTester.Services
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "PATH_REDUNDANT",
+					Code = ErrorCodes.PathRedundant,
 					Message = "Путь содержит лишние шаги.",
 					ElementType = "PathStep",
 					SeverityScore = 2.0,
@@ -351,7 +351,7 @@ namespace AICourseTester.Services
 
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "PRUNED_REQUIRED_NODE",
+						Code = ErrorCodes.PrunedRequiredNode,
 						Message = $"Узел {nodeId} был ошибочно отсечён, хотя должен участвовать в решении.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -375,7 +375,7 @@ namespace AICourseTester.Services
 
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "FAILED_TO_PRUNE_NODE",
+						Code = ErrorCodes.FailedToPruneNode,
 						Message = $"Узел {nodeId} не был отсечён, хотя должен быть исключён из решения.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -399,7 +399,7 @@ namespace AICourseTester.Services
 
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "PROCESSED_PRUNED_NODE",
+						Code = ErrorCodes.ProcessedPrunedNode,
 						Message = $"Узел {nodeId} был помечен как отсечённый, но при этом обработан пользователем.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -421,7 +421,7 @@ namespace AICourseTester.Services
 
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "PATH_THROUGH_PRUNED_BRANCH",
+						Code = ErrorCodes.PathThroughPrunedBranch,
 						Message = $"Выбран путь через узел {nodeId}, который был помечен как отсечённый.",
 						NodeId = nodeId,
 						TreeLevel = meta?.Depth,
@@ -503,7 +503,7 @@ namespace AICourseTester.Services
 
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "MIN_LEVEL_CONFUSION",
+						Code = ErrorCodes.MinLevelConfusion,
 						Message = $"В MIN-узле {minNode.Id} выбрано максимальное значение вместо минимального.",
 						NodeId = minNode.Id,
 						TreeLevel = meta?.Depth,
@@ -551,7 +551,7 @@ namespace AICourseTester.Services
 
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "ROOT_MAX_CONFUSION",
+					Code = ErrorCodes.RootMaxConfusion,
 					Message = "В корне MAX выбрано минимальное значение вместо максимального.",
 					NodeId = root.Id,
 					TreeLevel = meta?.Depth,
@@ -581,15 +581,15 @@ namespace AICourseTester.Services
 				return;
 
 			var hasNodeValueErrors = result.Errors.Any(e =>
-				e.Code == "NODE_A_INCORRECT" ||
-				e.Code == "NODE_B_INCORRECT" ||
-				e.Code == "NODE_AB_INCORRECT");
+				e.Code == ErrorCodes.NodeAIncorrect ||
+				e.Code == ErrorCodes.NodeBIncorrect ||
+				e.Code == ErrorCodes.NodeABIncorrect);
 
 			if (!hasNodeValueErrors)
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "VALUE_CORRECT_PATH_WRONG",
+					Code = ErrorCodes.ValueCorrectPathWrong,
 					Message = "Значения узлов рассчитаны верно, но выбран неверный оптимальный путь.",
 					ElementType = "PathStep",
 					PathStepIndex = 0,
@@ -607,7 +607,7 @@ namespace AICourseTester.Services
 				{
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "PATH_NOT_MAXIMIZING_ROOT_VALUE",
+						Code = ErrorCodes.PathNotMaximizingRootValue,
 						Message = $"Выбранная ветвь {userFirstStep} не даёт максимального значения корня.",
 						ElementType = "PathStep",
 						PathStepIndex = 0,
@@ -655,7 +655,7 @@ namespace AICourseTester.Services
 
 						result.Errors.Add(new AnalyzedError
 						{
-							Code = "EARLY_PRUNING_ERROR",
+							Code = ErrorCodes.EarlyPruningError,
 							Message = $"Лист {leaf.Id} отсечён слишком рано: условие alpha-beta отсечения ещё не было выполнено.",
 							NodeId = leaf.Id,
 							TreeLevel = meta?.Depth,
@@ -680,7 +680,7 @@ namespace AICourseTester.Services
 
 						result.Errors.Add(new AnalyzedError
 						{
-							Code = "MISSED_PRUNING_ERROR",
+							Code = ErrorCodes.MissedPruningError,
 							Message = $"Лист {leaf.Id} должен быть отсечён после выполнения условия alpha-beta отсечения.",
 							NodeId = leaf.Id,
 							TreeLevel = meta?.Depth,
@@ -733,7 +733,7 @@ namespace AICourseTester.Services
 
 					result.Errors.Add(new AnalyzedError
 					{
-						Code = "VALUE_AFFECTED_BY_WRONG_PRUNING",
+						Code = ErrorCodes.ValueAffectedByWrongPruning,
 						Message = $"Значение узла {minNode.Id} стало неверным из-за отсечения листа {trueMinLeaf.Id}, влияющего на минимум.",
 						NodeId = minNode.Id,
 						TreeLevel = meta?.Depth,
@@ -751,29 +751,29 @@ namespace AICourseTester.Services
 		private void AnalyzeCombinedSemanticCases(ErrorAnalysisResult result)
 		{
 			var hasNodeValueErrors = result.Errors.Any(e =>
-				e.Code == "NODE_A_INCORRECT" ||
-				e.Code == "NODE_B_INCORRECT" ||
-				e.Code == "NODE_AB_INCORRECT" ||
-				e.Code == "MIN_LEVEL_CONFUSION" ||
-				e.Code == "ROOT_MAX_CONFUSION" ||
-				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING");
+				e.Code == ErrorCodes.NodeAIncorrect ||
+				e.Code == ErrorCodes.NodeBIncorrect ||
+				e.Code == ErrorCodes.NodeABIncorrect ||
+				e.Code == ErrorCodes.MinLevelConfusion ||
+				e.Code == ErrorCodes.RootMaxConfusion ||
+				e.Code == ErrorCodes.ValueAffectedByWrongPruning);
 
 			var hasPruningErrors = result.Errors.Any(e =>
-				e.Code == "PRUNED_REQUIRED_NODE" ||
-				e.Code == "FAILED_TO_PRUNE_NODE" ||
-				e.Code == "EARLY_PRUNING_ERROR" ||
-				e.Code == "MISSED_PRUNING_ERROR");
+				e.Code == ErrorCodes.PrunedRequiredNode ||
+				e.Code == ErrorCodes.FailedToPruneNode ||
+				e.Code == ErrorCodes.EarlyPruningError ||
+				e.Code == ErrorCodes.MissedPruningError);
 
 			var hasPathErrors = result.Errors.Any(e =>
-				e.Code.StartsWith("PATH") ||
-				e.Code == "VALUE_CORRECT_PATH_WRONG" ||
-				e.Code == "PATH_NOT_MAXIMIZING_ROOT_VALUE");
+				IsPathError(e.Code) ||
+				e.Code == ErrorCodes.ValueCorrectPathWrong ||
+				e.Code == ErrorCodes.PathNotMaximizingRootValue);
 
 			if (!hasNodeValueErrors && hasPruningErrors)
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "VALUES_CORRECT_PRUNING_WRONG",
+					Code = ErrorCodes.ValuesCorrectPruningWrong,
 					Message = "Минимаксные значения рассчитаны верно, но отсечения выполнены неправильно.",
 					ElementType = "Pruning",
 					SeverityScore = 3.5,
@@ -782,18 +782,18 @@ namespace AICourseTester.Services
 			}
 
 			var hasAnyValueErrors = result.Errors.Any(e =>
-				e.Code == "NODE_A_INCORRECT" ||
-				e.Code == "NODE_B_INCORRECT" ||
-				e.Code == "NODE_AB_INCORRECT" ||
-				e.Code == "MIN_LEVEL_CONFUSION" ||
-				e.Code == "ROOT_MAX_CONFUSION" ||
-				e.Code == "VALUE_AFFECTED_BY_WRONG_PRUNING");
+				e.Code == ErrorCodes.NodeAIncorrect ||
+				e.Code == ErrorCodes.NodeBIncorrect ||
+				e.Code == ErrorCodes.NodeABIncorrect ||
+				e.Code == ErrorCodes.MinLevelConfusion ||
+				e.Code == ErrorCodes.RootMaxConfusion ||
+				e.Code == ErrorCodes.ValueAffectedByWrongPruning);
 
 			if (!hasAnyValueErrors && !hasPruningErrors && hasPathErrors)
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "VALUES_AND_PRUNING_CORRECT_PATH_WRONG",
+					Code = ErrorCodes.ValuesAndPruningCorrectPathWrong,
 					Message = "Значения и отсечения не содержат ошибок, но оптимальный путь выбран неверно.",
 					ElementType = "PathStep",
 					SeverityScore = 3.0,
@@ -802,16 +802,16 @@ namespace AICourseTester.Services
 			}
 
 			var hasDirectPruningErrors = result.Errors.Any(e =>
-				e.Code == "PRUNED_REQUIRED_NODE" ||
-				e.Code == "FAILED_TO_PRUNE_NODE" ||
-				e.Code == "EARLY_PRUNING_ERROR" ||
-				e.Code == "MISSED_PRUNING_ERROR");
+				e.Code == ErrorCodes.PrunedRequiredNode ||
+				e.Code == ErrorCodes.FailedToPruneNode ||
+				e.Code == ErrorCodes.EarlyPruningError ||
+				e.Code == ErrorCodes.MissedPruningError);
 
 			if (!hasNodeValueErrors && !hasPathErrors && hasPruningErrors && !hasDirectPruningErrors)
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "PRUNING_CORRECT_RESULT_WRONG_REASON",
+					Code = ErrorCodes.PruningCorrectResultWrongReason,
 					Message = "Итоговые значения и путь могут быть верными, но логика отсечения применена неверно.",
 					ElementType = "Pruning",
 					SeverityScore = 3.0,
@@ -826,18 +826,18 @@ namespace AICourseTester.Services
 		ErrorAnalysisResult result)
 		{
 			var nodeValueErrors = result.Errors.Where(e =>
-				e.Code == "NODE_A_INCORRECT" ||
-				e.Code == "NODE_B_INCORRECT" ||
-				e.Code == "NODE_AB_INCORRECT").ToList();
+				e.Code == ErrorCodes.NodeAIncorrect ||
+				e.Code == ErrorCodes.NodeBIncorrect ||
+				e.Code == ErrorCodes.NodeABIncorrect).ToList();
 
-			var pathErrors = result.Errors.Where(e => e.Code.StartsWith("PATH")).ToList();
-			var pruningErrors = result.Errors.Where(e => e.Code.StartsWith("PRUN") || e.Code.Contains("PRUNE")).ToList();
+			var pathErrors = result.Errors.Where(e => IsPathError(e.Code)).ToList();
+			var pruningErrors = result.Errors.Where(e => IsPruningError(e.Code) || e.Code.Contains("PRUNE")).ToList();
 
 			if (nodeValueErrors.Count == 0 && pathErrors.Count > 0)
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "VALUE_PATH_INCONSISTENCY",
+					Code = ErrorCodes.ValuePathInconsistency,
 					Message = "Значения узлов в целом согласованы, однако выбранный путь не соответствует решению.",
 					ElementType = "PathStep",
 					SeverityScore = 3.5,
@@ -845,11 +845,11 @@ namespace AICourseTester.Services
 				});
 			}
 
-			if (pruningErrors.Any(e => e.Code == "PATH_THROUGH_PRUNED_BRANCH"))
+			if (pruningErrors.Any(e => e.Code == ErrorCodes.PathThroughPrunedBranch))
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "PRUNING_PATH_INCONSISTENCY",
+					Code = ErrorCodes.PruningPathInconsistency,
 					Message = "Выбор пути противоречит действиям по отсечению.",
 					ElementType = "PathStep",
 					SeverityScore = 4.0,
@@ -857,11 +857,11 @@ namespace AICourseTester.Services
 				});
 			}
 
-			if (pruningErrors.Any(e => e.Code == "PROCESSED_PRUNED_NODE"))
+			if (pruningErrors.Any(e => e.Code == ErrorCodes.ProcessedPrunedNode))
 			{
 				result.Errors.Add(new AnalyzedError
 				{
-					Code = "VALUE_PRUNING_INCONSISTENCY",
+					Code = ErrorCodes.ValuePruningInconsistency,
 					Message = "Пользователь одновременно отсёк и обработал часть ветвей.",
 					ElementType = "InternalNode",
 					SeverityScore = 3.5,
@@ -909,10 +909,10 @@ namespace AICourseTester.Services
 
 			result.HasMassNodeErrors = result.Errors.Any(e =>
 				e.PatternType == "SYSTEMATIC_MISUNDERSTANDING" &&
-				e.Code.StartsWith("NODE"));
+				IsNodeError(e.Code));
 
 			result.HasPathErrors = result.Errors.Any(e =>
-				e.Code.StartsWith("PATH"));
+				IsPathError(e.Code));
 		}
 		private int EstimateOpportunityCount(
 		string groupKey,
@@ -994,5 +994,29 @@ namespace AICourseTester.Services
 				_ => severity
 			};
 		}
+		private bool IsPathError(string code)
+		{
+			return code == ErrorCodes.PathStepIncorrect ||
+				   code == ErrorCodes.PathIncomplete ||
+				   code == ErrorCodes.PathRedundant ||
+				   code == ErrorCodes.PathMissing ||
+				   code == ErrorCodes.ValueCorrectPathWrong ||
+				   code == ErrorCodes.PathNotMaximizingRootValue ||
+				   code == ErrorCodes.ValuesAndPruningCorrectPathWrong;
+		}
+
+		private bool IsPruningError(string code)
+		{
+			return code == ErrorCodes.PrunedRequiredNode ||
+				   code == ErrorCodes.FailedToPruneNode ||
+				   code == ErrorCodes.ProcessedPrunedNode ||
+				   code == ErrorCodes.PathThroughPrunedBranch ||
+				   code == ErrorCodes.EarlyPruningError ||
+				   code == ErrorCodes.MissedPruningError ||
+				   code == ErrorCodes.ValueAffectedByWrongPruning ||
+				   code == ErrorCodes.ValuesCorrectPruningWrong ||
+				   code == ErrorCodes.PruningCorrectResultWrongReason;
+		}
+
 	}
 }

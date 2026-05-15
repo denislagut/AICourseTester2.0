@@ -1,6 +1,7 @@
 using AICourseTester.Data;
 using AICourseTester.Models;
 using AICourseTester.Services;
+using AICourseTester.Services.Analysis;
 using AICourseTester.Services.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -149,6 +150,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddScoped<ITaskAnalysisPipelineService, TaskAnalysisPipelineService>();
+builder.Services.AddScoped<IErrorCausalityBuilder, ErrorCausalityBuilder>();
 builder.Services.AddScoped<IAlphaBetaErrorAnalysisService, AlphaBetaErrorAnalysisService>();
 builder.Services.AddScoped<IFifteenPuzzleErrorAnalysisService, FifteenPuzzleErrorAnalysisService>();
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();

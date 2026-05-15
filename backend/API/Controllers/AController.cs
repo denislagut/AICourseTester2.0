@@ -25,9 +25,6 @@ namespace AICourseTester.Controllers
         private readonly Random _random = new Random();
 
 		private readonly ITaskAnalysisPipelineService _taskAnalysisPipelineService;
-		private readonly IFifteenPuzzleErrorAnalysisService _fifteenPuzzleErrorAnalysisService;
-		private readonly IErrorClassificationService _errorClassificationService;
-		private readonly IKnowledgeGapDetectionService _knowledgeGapDetectionService;
 
 		public AController(
 	    MainDbContext context,
@@ -42,9 +39,31 @@ namespace AICourseTester.Controllers
 			_context = context;
 			_usersService = usersService;
 			_taskAnalysisPipelineService = taskAnalysisPipelineService;
-			_fifteenPuzzleErrorAnalysisService = fifteenPuzzleErrorAnalysisService;
-			_errorClassificationService = errorClassificationService;
-			_knowledgeGapDetectionService = knowledgeGapDetectionService;
+		}
+
+		[Authorize]
+		[HttpPost("FifteenPuzzle/Debug/ResetSolved")]
+		public async Task<ActionResult> DebugResetSolved()
+		{
+			var userId = _userManager.GetUserId(User);
+
+			var fp = await _context.Fifteens
+				.FirstOrDefaultAsync(x => x.UserId == userId);
+
+			if (fp == null)
+			{
+				return NotFound();
+			}
+
+			fp.IsSolved = false;
+			fp.UserSolution = null;
+			fp.Solution = null;
+
+			await RemoveFifteenPuzzleAnalysisDataAsync(fp.Id);
+
+			await _context.SaveChangesAsync();
+
+			return Ok();
 		}
 
 		[HttpGet("FifteenPuzzle/Train")]
@@ -206,6 +225,34 @@ namespace AICourseTester.Controllers
 			return Ok(gaps);
 		}
 
+		private async Task RemoveFifteenPuzzleAnalysisDataAsync(int fifteenPuzzleId)
+		{
+			var oldErrors = await _context.ErrorRecords
+				.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fifteenPuzzleId)
+				.ToListAsync();
+
+			var oldErrorIds = oldErrors.Select(e => e.Id).ToList();
+
+			if (oldErrorIds.Count > 0)
+			{
+				var oldLinks = await _context.CausalErrorLinks
+					.Where(l =>
+						oldErrorIds.Contains(l.SourceErrorId) ||
+						oldErrorIds.Contains(l.TargetErrorId))
+					.ToListAsync();
+
+				_context.CausalErrorLinks.RemoveRange(oldLinks);
+			}
+
+			_context.ErrorRecords.RemoveRange(oldErrors);
+
+			var oldGaps = await _context.KnowledgeGaps
+				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fifteenPuzzleId)
+				.ToListAsync();
+
+			_context.KnowledgeGaps.RemoveRange(oldGaps);
+		}
+
 		private async Task<bool> _assignTask(string userId, int heuristic, int dimensions, int iters)
 		{
 			if ((await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)) == null)
@@ -217,22 +264,12 @@ namespace AICourseTester.Controllers
 
 			if (fp == null)
 			{
-				fp = _context.Fifteens.Add(new FifteenPuzzle() { UserId = userId }).Entity;
+				fp = _context.Fifteens.Add(new FifteenPuzzle { UserId = userId }).Entity;
 				await _context.SaveChangesAsync();
 			}
 			else
 			{
-				var oldErrors = await _context.ErrorRecords
-					.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fp.Id)
-					.ToListAsync();
-
-				_context.ErrorRecords.RemoveRange(oldErrors);
-
-				var oldGaps = await _context.KnowledgeGaps
-					.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fp.Id)
-					.ToListAsync();
-
-				_context.KnowledgeGaps.RemoveRange(oldGaps);
+				await RemoveFifteenPuzzleAnalysisDataAsync(fp.Id);
 			}
 
 			fp.Heuristic = heuristic;
@@ -347,7 +384,8 @@ namespace AICourseTester.Controllers
         public async Task<ActionResult> UpdateFPTest(int[][]? State, string userId, [System.Web.Http.FromUri] int? iters = null, [System.Web.Http.FromUri] int? dimensions = null, [System.Web.Http.FromUri] bool generate = false)
         {
             var fp = await _context.Fifteens.FirstOrDefaultAsync(f => f.UserId == userId);
-            if (fp == null)
+
+			if (fp == null)
             {
                 if (_context.Users.FirstOrDefault(f => f.Id == userId) != null)
                 {
@@ -368,7 +406,11 @@ namespace AICourseTester.Controllers
             {
                 fp.Dimensions = (int)dimensions;
             }
-            fp.Problem = null;
+
+			await RemoveFifteenPuzzleAnalysisDataAsync(fp.Id);
+
+			fp.UserSolution = null;
+			fp.Problem = null;
             fp.Solution = null;
             fp.IsSolved = false;
             fp.Date = DateTime.Now;
@@ -388,13 +430,23 @@ namespace AICourseTester.Controllers
             return Ok();
         }
 
-        [DisableRateLimiting]
-        [Authorize(Roles = "Administrator"), HttpDelete("FifteenPuzzle/Users/{userId}")]
-        public async Task<ActionResult> DeleteFPTest(string userId)
-        {
-            await _context.Fifteens.Where(f => f.UserId == userId).ExecuteDeleteAsync();
-            await _context.SaveChangesAsync();
-            return Ok();
-        }
-    }
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator"), HttpDelete("FifteenPuzzle/Users/{userId}")]
+		public async Task<ActionResult> DeleteFPTest(string userId)
+		{
+			var fp = await _context.Fifteens.FirstOrDefaultAsync(f => f.UserId == userId);
+
+			if (fp == null)
+			{
+				return NotFound();
+			}
+
+			await RemoveFifteenPuzzleAnalysisDataAsync(fp.Id);
+
+			_context.Fifteens.Remove(fp);
+			await _context.SaveChangesAsync();
+
+			return Ok();
+		}
+	}
 }
