@@ -7,5 +7,7 @@ namespace AICourseTester.Services.Interfaces
 		Task<AnalyticsSummaryDTO> GetSummaryAsync();
 		Task<List<TopErrorTypeDTO>> GetTopErrorTypesAsync();
 		Task<List<TopKnowledgeGapDTO>> GetTopKnowledgeGapsAsync();
+		Task<StudentAnalyticsDTO?> GetStudentAnalyticsAsync(string userId);
+		Task<GroupAnalyticsDTO?> GetGroupAnalyticsAsync(int groupId);
 	}
 }

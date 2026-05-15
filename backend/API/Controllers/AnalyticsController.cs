@@ -34,5 +34,31 @@ namespace AICourseTester.Controllers
 		{
 			return Ok(await _analyticsService.GetTopKnowledgeGapsAsync());
 		}
+
+		[HttpGet("Students/{userId}")]
+		public async Task<ActionResult<StudentAnalyticsDTO>> GetStudentAnalytics(string userId)
+		{
+			var analytics = await _analyticsService.GetStudentAnalyticsAsync(userId);
+
+			if (analytics == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(analytics);
+		}
+
+		[HttpGet("Groups/{groupId:int}")]
+		public async Task<ActionResult<GroupAnalyticsDTO>> GetGroupAnalytics(int groupId)
+		{
+			var analytics = await _analyticsService.GetGroupAnalyticsAsync(groupId);
+
+			if (analytics == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(analytics);
+		}
 	}
 }
