@@ -1,0 +1,240 @@
+.main-wrapper {
+    width: 90vw;
+    max-width: var(--wrapper-width, 1440px);
+    margin: 12px auto 15px;
+    padding: 25px clamp(15px, 5vw, 70px) 45px;
+    background: #FFFAFA;
+    border-radius: 0 0 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    font-size: clamp(16px, 2vw, 24px);
+}
+
+.dashboard-section {
+    border: 1px solid #7F7C7C;
+    border-radius: 10px;
+    padding: clamp(14px, 2vw, 20px);
+    background: #FFFAFA;
+}
+
+.section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.section-heading h1,
+.section-heading h2 {
+    font-size: clamp(20px, 4vw, 28px);
+    font-weight: 500;
+}
+
+.lookup-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.lookup-form input {
+    width: clamp(180px, 25vw, 320px);
+    height: clamp(30px, 5vw, 40px);
+    border: 1px solid #aaa;
+    border-radius: 20px;
+    background: #DFDFDF;
+    padding: 0 12px;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.lookup-form button {
+    height: clamp(30px, 5vw, 40px);
+    min-width: 120px;
+    padding: 0 16px;
+    border-radius: 20px;
+    background: #212529;
+    color: #FFFFFF;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.status-text {
+    min-height: 20px;
+    color: #555555;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.status-text.error {
+    color: #B42318;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.metric-card,
+.panel,
+.recommendation-item,
+.gap-row {
+    border: 1px solid #DEDEDE;
+    border-radius: 10px;
+    background: #FFFFFF;
+}
+
+.metric-card {
+    min-height: 110px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.metric-card__label {
+    color: #555555;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.metric-card__value {
+    font-size: clamp(26px, 4vw, 36px);
+    font-weight: 700;
+}
+
+.analytics-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.1fr) minmax(320px, 1.2fr);
+    gap: 14px;
+}
+
+.panel {
+    padding: 14px;
+    min-height: 132px;
+}
+
+.panel h3 {
+    font-size: clamp(18px, 3vw, 24px);
+    font-weight: 500;
+    margin-bottom: 12px;
+}
+
+.details-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.details-list div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid #E8E8E8;
+    padding-bottom: 7px;
+}
+
+.details-list span:first-child {
+    color: #555555;
+}
+
+.details-list span:last-child {
+    text-align: right;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.gap-list,
+.recommendation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.gap-row,
+.recommendation-item {
+    padding: 10px;
+}
+
+.gap-row__title,
+.recommendation-item__title {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 6px;
+}
+
+.gap-row__meta,
+.recommendation-item__meta {
+    color: #555555;
+    font-size: clamp(13px, 1.6vw, 16px);
+    line-height: 1.35;
+}
+
+.recommendation-item__description {
+    margin-top: 8px;
+    font-size: clamp(14px, 2vw, 18px);
+    line-height: 1.4;
+}
+
+.priority {
+    display: inline-flex;
+    align-items: center;
+    min-width: 72px;
+    justify-content: center;
+    border-radius: 8px;
+    padding: 3px 8px;
+    margin-right: 8px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.priority--high {
+    color: #8A1C12;
+    background: #FEE4E2;
+}
+
+.priority--medium {
+    color: #7A4A00;
+    background: #FEF0C7;
+}
+
+.priority--low {
+    color: #05603A;
+    background: #D1FADF;
+}
+
+.empty-state {
+    color: #666666;
+    font-size: clamp(14px, 2vw, 18px);
+    line-height: 1.35;
+}
+
+@media (max-width: 1180px) {
+    .summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .analytics-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .main-wrapper {
+        width: 96vw;
+    }
+
+    .section-heading,
+    .lookup-form {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .lookup-form button,
+    .lookup-form input {
+        width: 100%;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+}
