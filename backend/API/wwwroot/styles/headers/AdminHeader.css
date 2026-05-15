@@ -113,6 +113,12 @@
     background-image: url(/img/button_settings.svg);
     background-size:contain ;
 }
+.button_analytics{
+    background-image: url("/img/report-business-document.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
 .button_logout{
     background-image: url(/img/button_logout.svg);
     background-size:contain ;

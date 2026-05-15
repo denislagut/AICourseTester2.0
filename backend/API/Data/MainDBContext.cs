@@ -22,6 +22,9 @@ namespace AICourseTester.Data
 		public DbSet<KnowledgeAspect> KnowledgeAspects { get; set; }
 		public DbSet<ErrorTypeAspect> ErrorTypeAspects { get; set; }
 		public DbSet<KnowledgeGap> KnowledgeGaps { get; set; }
+		public DbSet<GeneratedRecommendation> GeneratedRecommendations { get; set; }
+		public DbSet<GeneratedReport> GeneratedReports { get; set; }
+		public DbSet<AnalyticsSnapshot> AnalyticsSnapshots { get; set; }
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -116,6 +119,44 @@ namespace AICourseTester.Data
 				.WithMany()
 				.HasForeignKey(g => g.KnowledgeAspectId)
 				.OnDelete(DeleteBehavior.Cascade);
+
+			modelBuilder.Entity<GeneratedRecommendation>()
+				.HasOne(r => r.User)
+				.WithMany()
+				.HasForeignKey(r => r.UserId)
+				.OnDelete(DeleteBehavior.SetNull);
+			modelBuilder.Entity<GeneratedRecommendation>()
+				.HasOne(r => r.Group)
+				.WithMany()
+				.HasForeignKey(r => r.GroupId)
+				.OnDelete(DeleteBehavior.SetNull);
+			modelBuilder.Entity<GeneratedRecommendation>()
+				.HasOne(r => r.KnowledgeAspect)
+				.WithMany()
+				.HasForeignKey(r => r.KnowledgeAspectId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			modelBuilder.Entity<GeneratedReport>()
+				.HasOne(r => r.User)
+				.WithMany()
+				.HasForeignKey(r => r.UserId)
+				.OnDelete(DeleteBehavior.SetNull);
+			modelBuilder.Entity<GeneratedReport>()
+				.HasOne(r => r.Group)
+				.WithMany()
+				.HasForeignKey(r => r.GroupId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			modelBuilder.Entity<AnalyticsSnapshot>()
+				.HasOne(s => s.User)
+				.WithMany()
+				.HasForeignKey(s => s.UserId)
+				.OnDelete(DeleteBehavior.SetNull);
+			modelBuilder.Entity<AnalyticsSnapshot>()
+				.HasOne(s => s.Group)
+				.WithMany()
+				.HasForeignKey(s => s.GroupId)
+				.OnDelete(DeleteBehavior.SetNull);
 
 			modelBuilder.Entity<CausalErrorLink>()
 				.HasOne(x => x.SourceError)
