@@ -48,7 +48,12 @@
             <div class="section-heading">
                 <h2>Аналитика студента</h2>
                 <form id="student-form" class="lookup-form">
-                    <input id="student-user-id" type="text" placeholder="Идентификатор пользователя" autocomplete="off">
+                    <select id="student-group-select" aria-label="Группа">
+                        <option value="">Выберите группу</option>
+                    </select>
+                    <select id="student-select" aria-label="Студент" disabled>
+                        <option value="">Выберите студента</option>
+                    </select>
                     <button type="submit">Загрузить</button>
                 </form>
             </div>
@@ -60,13 +65,86 @@
             <div class="section-heading">
                 <h2>Аналитика группы</h2>
                 <form id="group-form" class="lookup-form">
-                    <input id="group-id" type="number" min="1" placeholder="Идентификатор группы" autocomplete="off">
+                    <select id="group-analytics-select" aria-label="Группа">
+                        <option value="">Выберите группу</option>
+                    </select>
                     <button type="submit">Загрузить</button>
                 </form>
             </div>
             <div id="group-status" class="status-text"></div>
             <div id="group-content" class="analytics-layout"></div>
         </section>
+
+        <section class="dashboard-section">
+            <div class="section-heading">
+                <h2>Сравнение аналитики за периоды</h2>
+            </div>
+            <form id="compare-form" class="compare-form">
+                <div class="compare-mode-switch" role="radiogroup" aria-label="Режим сравнения">
+                    <label>
+                        <input type="radio" name="compare-mode" value="student" checked>
+                        <span>По студенту</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="compare-mode" value="group">
+                        <span>По группе</span>
+                    </label>
+                </div>
+
+                <div id="compare-student-controls" class="compare-controls">
+                    <select id="compare-student-group-select" aria-label="Группа для выбора студента">
+                        <option value="">Выберите группу</option>
+                    </select>
+                    <select id="compare-student-select" aria-label="Студент для сравнения" disabled>
+                        <option value="">Выберите студента</option>
+                    </select>
+                </div>
+
+                <div id="compare-group-controls" class="compare-controls is-hidden">
+                    <select id="compare-group-select" aria-label="Группа для сравнения">
+                        <option value="">Выберите группу</option>
+                    </select>
+                </div>
+
+                <div class="compare-periods">
+                    <fieldset class="compare-period">
+                        <legend>Период «До»</legend>
+                        <label>
+                            <span>Дата с</span>
+                            <input id="compare-before-from" class="compare-date-input" type="date">
+                        </label>
+                        <label>
+                            <span>Дата по</span>
+                            <input id="compare-before-to" class="compare-date-input" type="date">
+                        </label>
+                    </fieldset>
+
+                    <fieldset class="compare-period">
+                        <legend>Период «После»</legend>
+                        <label>
+                            <span>Дата с</span>
+                            <input id="compare-after-from" class="compare-date-input" type="date">
+                        </label>
+                        <label>
+                            <span>Дата по</span>
+                            <input id="compare-after-to" class="compare-date-input" type="date">
+                        </label>
+                    </fieldset>
+                </div>
+
+                <div class="available-dates">
+                    <h3>Даты с данными</h3>
+                    <div id="compare-date-chips" class="date-chip-list">
+                        <span class="empty-state">Выберите студента или группу</span>
+                    </div>
+                </div>
+
+                <button type="submit">Сравнить периоды</button>
+            </form>
+            <div id="compare-status" class="status-text"></div>
+            <div id="compare-content" class="compare-content"></div>
+        </section>
+
         <section class="dashboard-section">
             <div class="section-heading">
                 <h2>Отчёты</h2>
@@ -74,7 +152,12 @@
             <div class="reports-grid">
                 <form id="student-report-form" class="panel report-form">
                     <h3>Отчёт по студенту</h3>
-                    <input id="report-student-user-id" type="text" placeholder="Идентификатор пользователя" autocomplete="off">
+                    <select id="report-student-group-select" aria-label="Группа">
+                        <option value="">Выберите группу</option>
+                    </select>
+                    <select id="report-student-select" aria-label="Студент" disabled>
+                        <option value="">Выберите студента</option>
+                    </select>
                     <div class="report-actions">
                         <button type="submit">Сформировать отчёт по студенту</button>
                         <button id="student-report-history-button" type="button" class="button-secondary">Показать историю отчётов студента</button>
@@ -83,7 +166,9 @@
 
                 <form id="group-report-form" class="panel report-form">
                     <h3>Отчёт по группе</h3>
-                    <input id="report-group-id" type="number" min="1" placeholder="Идентификатор группы" autocomplete="off">
+                    <select id="group-report-select" aria-label="Группа">
+                        <option value="">Выберите группу</option>
+                    </select>
                     <div class="report-actions">
                         <button type="submit">Сформировать отчёт по группе</button>
                         <button id="group-report-history-button" type="button" class="button-secondary">Показать историю отчётов группы</button>

@@ -1,4 +1,11 @@
-﻿document.addEventListener('DOMContentLoaded', () => {
+﻿let dashboardGroups = [];
+const selectedStudentIds = { student: '', report: '', compare: '' };
+let activeCompareDateInput = null;
+let lastAutoSnapshotStudentKey = '';
+let lastAutoSnapshotGroupKey = '';
+const COMPARISON_TIME_OFFSET_HOURS = 6;
+
+document.addEventListener('DOMContentLoaded', () => {
     if (!restrictAccess()) return;
 
     const userFullName = sessionStorage.getItem('userFullName') || 'Иванов И. И.';
@@ -9,6 +16,20 @@
     document.getElementById('group-form').addEventListener('submit', loadGroupDashboard);
     document.getElementById('student-report-form').addEventListener('submit', generateStudentReport);
     document.getElementById('group-report-form').addEventListener('submit', generateGroupReport);
+    document.getElementById('student-group-select').addEventListener('change', () => loadStudentsForGroup('student'));
+    document.getElementById('student-select').addEventListener('change', event => selectedStudentIds.student = event.target.value);
+    document.getElementById('report-student-group-select').addEventListener('change', () => loadStudentsForGroup('report'));
+    document.getElementById('report-student-select').addEventListener('change', event => selectedStudentIds.report = event.target.value);
+    document.getElementById('compare-student-group-select').addEventListener('change', () => loadStudentsForGroup('compare'));
+    document.getElementById('compare-student-select').addEventListener('change', event => {
+        selectedStudentIds.compare = event.target.value;
+        loadCompareSnapshotDates();
+    });
+    document.getElementById('compare-group-select').addEventListener('change', loadCompareSnapshotDates);
+    document.getElementById('compare-form').addEventListener('submit', compareAnalyticsPeriods);
+    document.querySelectorAll('input[name="compare-mode"]').forEach(input => input.addEventListener('change', handleCompareModeChange));
+    document.querySelectorAll('.compare-date-input').forEach(input => input.addEventListener('focus', () => activeCompareDateInput = input));
+    document.getElementById('compare-date-chips').addEventListener('click', applySnapshotDateChip);
     document.getElementById('student-report-history-button').addEventListener('click', loadStudentReportHistory);
     document.getElementById('group-report-history-button').addEventListener('click', loadGroupReportHistory);
     document.getElementById('reports-content').addEventListener('click', toggleReportDetails);
@@ -16,6 +37,7 @@
     document.getElementById('profile-tooltip__button-logout').addEventListener('click', logout);
 
     loadSummary();
+    loadDashboardGroups();
 });
 
 async function authorizedGet(path) {
@@ -111,6 +133,39 @@ async function authorizedGetWithMessage(path) {
     }
 }
 
+async function authorizedGetDetailed(path) {
+    let authtoken = Cookies.get('.AspNetCore.Identity.Application');
+
+    if (!authtoken) {
+        throw new Error('Токен авторизации отсутствует');
+    }
+
+    if (isTokenExpired(authtoken)) {
+        authtoken = await refreshToken();
+    }
+
+    const response = await fetch(`${apiHost}${path}`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authtoken}`
+        }
+    });
+
+    if (response.status === 401) {
+        const refreshedToken = await refreshToken();
+        if (refreshedToken) {
+            return authorizedGetDetailed(path);
+        }
+    }
+
+    if (!response.ok) {
+        throw new Error(await getResponseErrorMessage(response));
+    }
+
+    return response.json();
+}
+
 async function authorizedGetBlob(path) {
     let authtoken = Cookies.get('.AspNetCore.Identity.Application');
 
@@ -143,6 +198,154 @@ async function authorizedGetBlob(path) {
     return response.blob();
 }
 
+async function loadDashboardGroups() {
+    const statuses = [
+        document.getElementById('student-status'),
+        document.getElementById('reports-status'),
+        document.getElementById('compare-status')
+    ];
+
+    try {
+        dashboardGroups = await authorizedGet('/Users/Groups');
+        populateGroupSelect('student-group-select', dashboardGroups);
+        populateGroupSelect('report-student-group-select', dashboardGroups);
+        populateGroupSelect('group-analytics-select', dashboardGroups);
+        populateGroupSelect('group-report-select', dashboardGroups);
+        populateGroupSelect('compare-student-group-select', dashboardGroups);
+        populateGroupSelect('compare-group-select', dashboardGroups);
+    } catch (error) {
+        statuses.forEach(status => setError(status, `Не удалось загрузить список групп: ${error.message}`));
+    }
+}
+
+function populateGroupSelect(selectId, groups) {
+    const select = document.getElementById(selectId);
+    select.innerHTML = '<option value="">Выберите группу</option>';
+
+    if (!Array.isArray(groups) || groups.length === 0) {
+        select.innerHTML = '<option value="">Группы не найдены</option>';
+        select.disabled = true;
+        return;
+    }
+
+    select.disabled = false;
+    select.innerHTML += groups.map(group => `
+        <option value="${escapeHtml(group.id)}">${escapeHtml(group.name || `Группа #${group.id}`)}</option>
+    `).join('');
+}
+
+async function loadStudentsForGroup(scope) {
+    const config = {
+        student: {
+            groupSelectId: 'student-group-select',
+            studentSelectId: 'student-select',
+            statusId: 'student-status'
+        },
+        report: {
+            groupSelectId: 'report-student-group-select',
+            studentSelectId: 'report-student-select',
+            statusId: 'reports-status'
+        },
+        compare: {
+            groupSelectId: 'compare-student-group-select',
+            studentSelectId: 'compare-student-select',
+            statusId: 'compare-status'
+        }
+    }[scope];
+
+    const groupSelectId = config.groupSelectId;
+    const studentSelectId = config.studentSelectId;
+    const status = document.getElementById(config.statusId);
+    const groupId = document.getElementById(groupSelectId).value;
+
+    resetStudentSelect(studentSelectId, 'Выберите студента');
+    selectedStudentIds[scope] = '';
+    status.textContent = '';
+    status.classList.remove('error');
+
+    if (scope === 'compare') {
+        clearCompareSnapshotDates('Выберите студента или группу');
+        document.getElementById('compare-content').innerHTML = '';
+    }
+
+    if (!groupId) {
+        resetStudentSelect(studentSelectId, 'Сначала выберите группу');
+        return;
+    }
+
+    try {
+        resetStudentSelect(studentSelectId, 'Загрузка студентов...');
+        const students = await loadExistingGroupUsers(groupId);
+        populateStudentSelect(studentSelectId, students);
+
+        if (!Array.isArray(students) || students.length === 0) {
+            status.textContent = 'В выбранной группе нет студентов';
+        }
+    } catch (error) {
+        resetStudentSelect(studentSelectId, 'Выберите студента');
+        setError(status, error.message);
+    }
+}
+
+function resetStudentSelect(selectId, placeholder) {
+    const select = document.getElementById(selectId);
+    select.disabled = true;
+    select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
+}
+
+function populateStudentSelect(selectId, students) {
+    const select = document.getElementById(selectId);
+    select.innerHTML = '<option value="">Выберите студента</option>';
+
+    if (!Array.isArray(students) || students.length === 0) {
+        select.innerHTML = '<option value="">В выбранной группе нет студентов</option>';
+        select.disabled = true;
+        return;
+    }
+
+    select.disabled = false;
+    select.innerHTML += students.map(student => `
+        <option value="${escapeHtml(student.id)}">${escapeHtml(formatStudentOption(student))}</option>
+    `).join('');
+}
+
+async function loadExistingGroupUsers(groupId) {
+    try {
+        return await authorizedGet(`/Users/Groups/${encodeURIComponent(groupId)}/`);
+    } catch (error) {
+        if (String(error.message).endsWith('404')) {
+            return [];
+        }
+
+        throw error;
+    }
+}
+
+function formatStudentOption(student) {
+    const fullName = [student.secondName, student.name, student.patronymic]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+    const name = student.fullName || fullName || student.userName || student.email || student.id;
+    const login = student.userName && student.userName !== name ? ` (${student.userName})` : '';
+    return `${name}${login}`;
+}
+
+function getSelectedStudentId(scope) {
+    const selectMap = {
+        student: 'student-select',
+        report: 'report-student-select',
+        compare: 'compare-student-select'
+    };
+    const selectId = selectMap[scope] || 'student-select';
+    const value = document.getElementById(selectId).value;
+    selectedStudentIds[scope] = value;
+    return value;
+}
+
+function getSelectedGroupId(selectId) {
+    return document.getElementById(selectId).value;
+}
 async function loadSummary() {
     const status = document.getElementById('summary-status');
     const grid = document.getElementById('summary-grid');
@@ -164,12 +367,12 @@ async function loadSummary() {
 async function loadStudentDashboard(event) {
     event.preventDefault();
 
-    const userId = document.getElementById('student-user-id').value.trim();
+    const userId = getSelectedStudentId('student');
     const status = document.getElementById('student-status');
     const content = document.getElementById('student-content');
 
     if (!userId) {
-        setError(status, 'Введите идентификатор пользователя');
+        setError(status, 'Выберите студента');
         return;
     }
 
@@ -192,12 +395,12 @@ async function loadStudentDashboard(event) {
 async function loadGroupDashboard(event) {
     event.preventDefault();
 
-    const groupId = document.getElementById('group-id').value.trim();
+    const groupId = getSelectedGroupId('group-analytics-select');
     const status = document.getElementById('group-status');
     const content = document.getElementById('group-content');
 
     if (!groupId) {
-        setError(status, 'Введите идентификатор группы');
+        setError(status, 'Выберите группу');
         return;
     }
 
@@ -220,12 +423,12 @@ async function loadGroupDashboard(event) {
 async function generateStudentReport(event) {
     event.preventDefault();
 
-    const userId = document.getElementById('report-student-user-id').value.trim();
+    const userId = getSelectedStudentId('report');
     const status = document.getElementById('reports-status');
     const content = document.getElementById('reports-content');
 
     if (!userId) {
-        setError(status, 'Введите идентификатор пользователя');
+        setError(status, 'Выберите студента');
         return;
     }
 
@@ -245,12 +448,12 @@ async function generateStudentReport(event) {
 async function generateGroupReport(event) {
     event.preventDefault();
 
-    const groupId = document.getElementById('report-group-id').value.trim();
+    const groupId = getSelectedGroupId('group-report-select');
     const status = document.getElementById('reports-status');
     const content = document.getElementById('reports-content');
 
     if (!groupId) {
-        setError(status, 'Введите идентификатор группы');
+        setError(status, 'Выберите группу');
         return;
     }
 
@@ -268,12 +471,12 @@ async function generateGroupReport(event) {
 }
 
 async function loadStudentReportHistory() {
-    const userId = document.getElementById('report-student-user-id').value.trim();
+    const userId = getSelectedStudentId('report');
     const status = document.getElementById('reports-status');
     const content = document.getElementById('reports-content');
 
     if (!userId) {
-        setError(status, 'Введите идентификатор пользователя');
+        setError(status, 'Выберите студента');
         return;
     }
 
@@ -290,12 +493,12 @@ async function loadStudentReportHistory() {
 }
 
 async function loadGroupReportHistory() {
-    const groupId = document.getElementById('report-group-id').value.trim();
+    const groupId = getSelectedGroupId('group-report-select');
     const status = document.getElementById('reports-status');
     const content = document.getElementById('reports-content');
 
     if (!groupId) {
-        setError(status, 'Введите идентификатор группы');
+        setError(status, 'Выберите группу');
         return;
     }
 
@@ -309,6 +512,266 @@ async function loadGroupReportHistory() {
         content.innerHTML = '';
         setError(status, error.message);
     }
+}
+
+function handleCompareModeChange() {
+    const mode = getCompareMode();
+    const studentControls = document.getElementById('compare-student-controls');
+    const groupControls = document.getElementById('compare-group-controls');
+    const content = document.getElementById('compare-content');
+    const status = document.getElementById('compare-status');
+
+    studentControls.classList.toggle('is-hidden', mode !== 'student');
+    groupControls.classList.toggle('is-hidden', mode !== 'group');
+    content.innerHTML = '';
+    status.textContent = '';
+    status.classList.remove('error');
+    loadCompareSnapshotDates();
+}
+
+function getCompareMode() {
+    return document.querySelector('input[name="compare-mode"]:checked')?.value || 'student';
+}
+
+async function loadCompareSnapshotDates() {
+    const mode = getCompareMode();
+    const status = document.getElementById('compare-status');
+
+    status.textContent = '';
+    status.classList.remove('error');
+
+    const targetId = mode === 'student'
+        ? getSelectedStudentId('compare')
+        : getSelectedGroupId('compare-group-select');
+
+    if (!targetId) {
+        clearCompareSnapshotDates(mode === 'student' ? 'Выберите студента' : 'Выберите группу');
+        return;
+    }
+
+    await createFreshCompareSnapshot(mode, targetId, status);
+
+    try {
+        const path = mode === 'student'
+            ? `/Analytics/Snapshots/Students/${encodeURIComponent(targetId)}`
+            : `/Analytics/Snapshots/Groups/${encodeURIComponent(targetId)}`;
+        const snapshots = await authorizedGetWithMessage(path);
+        renderCompareDateChips(snapshots);
+    } catch (error) {
+        clearCompareSnapshotDates('Даты с данными не найдены');
+        setError(status, error.message);
+    }
+}
+
+async function createFreshCompareSnapshot(mode, targetId, status) {
+    const isStudentMode = mode === 'student';
+    const currentComparisonDate = formatComparisonDateParts(addComparisonOffset(new Date()));
+    const snapshotKey = `${targetId}|${currentComparisonDate.inputValue}`;
+    const alreadyCreated = isStudentMode
+        ? lastAutoSnapshotStudentKey === snapshotKey
+        : lastAutoSnapshotGroupKey === snapshotKey;
+
+    if (alreadyCreated) {
+        return;
+    }
+
+    try {
+        const path = isStudentMode
+            ? `/Analytics/Students/${encodeURIComponent(targetId)}`
+            : `/Analytics/Groups/${encodeURIComponent(targetId)}`;
+        await authorizedGet(path);
+
+        if (isStudentMode) {
+            lastAutoSnapshotStudentKey = snapshotKey;
+        } else {
+            lastAutoSnapshotGroupKey = snapshotKey;
+        }
+    } catch {
+        setError(status, 'Не удалось сформировать актуальную аналитику. Загрузите аналитику вручную.');
+    }
+}
+
+function clearCompareSnapshotDates(message) {
+    document.getElementById('compare-date-chips').innerHTML = `<span class="empty-state">${escapeHtml(message)}</span>`;
+}
+
+function renderCompareDateChips(snapshots) {
+    const container = document.getElementById('compare-date-chips');
+
+    if (!Array.isArray(snapshots) || snapshots.length === 0) {
+        clearCompareSnapshotDates('Даты с данными не найдены');
+        return;
+    }
+
+    const uniqueDates = new Map();
+
+    snapshots.forEach(snapshot => {
+        const dateInfo = getComparisonDateInfo(snapshot.createdAt || snapshot.CreatedAt);
+
+        if (dateInfo && !uniqueDates.has(dateInfo.inputValue)) {
+            uniqueDates.set(dateInfo.inputValue, dateInfo.displayValue);
+        }
+    });
+
+    if (uniqueDates.size === 0) {
+        clearCompareSnapshotDates('Даты с данными не найдены');
+        return;
+    }
+
+    container.innerHTML = Array.from(uniqueDates.entries()).map(([inputValue, displayValue]) => `
+        <button type="button" class="date-chip" data-date="${escapeHtml(inputValue)}">${escapeHtml(displayValue)}</button>
+    `).join('');
+}
+
+function applySnapshotDateChip(event) {
+    const chip = event.target.closest('.date-chip');
+
+    if (!chip) {
+        return;
+    }
+
+    const dateValue = chip.dataset.date;
+    const dateInputs = Array.from(document.querySelectorAll('.compare-date-input'));
+    const targetInput = activeCompareDateInput && dateInputs.includes(activeCompareDateInput)
+        ? activeCompareDateInput
+        : dateInputs.find(input => !input.value) || dateInputs[0];
+
+    if (targetInput) {
+        targetInput.value = dateValue;
+        targetInput.focus();
+        activeCompareDateInput = targetInput;
+    }
+}
+
+async function compareAnalyticsPeriods(event) {
+    event.preventDefault();
+
+    const mode = getCompareMode();
+    const status = document.getElementById('compare-status');
+    const content = document.getElementById('compare-content');
+    const targetId = mode === 'student'
+        ? getSelectedStudentId('compare')
+        : getSelectedGroupId('compare-group-select');
+
+    if (!targetId) {
+        setError(status, mode === 'student' ? 'Выберите студента' : 'Выберите группу');
+        return;
+    }
+
+    status.textContent = 'Сравнение периодов...';
+    status.classList.remove('error');
+    content.innerHTML = '';
+
+    try {
+        const query = buildCompareQuery();
+        const path = mode === 'student'
+            ? `/Analytics/Students/${encodeURIComponent(targetId)}/Compare?${query}`
+            : `/Analytics/Groups/${encodeURIComponent(targetId)}/Compare?${query}`;
+        const comparison = await authorizedGetDetailed(path);
+
+        content.innerHTML = renderCompareResult(comparison);
+        status.textContent = '';
+    } catch (error) {
+        content.innerHTML = '';
+        setError(status, error.message || 'Недостаточно данных для сравнения выбранных периодов');
+    }
+}
+
+function buildCompareQuery() {
+    const params = new URLSearchParams();
+    const fields = [
+        ['beforeFrom', 'compare-before-from'],
+        ['beforeTo', 'compare-before-to'],
+        ['afterFrom', 'compare-after-from'],
+        ['afterTo', 'compare-after-to']
+    ];
+
+    fields.forEach(([name, id]) => {
+        const value = document.getElementById(id).value;
+
+        if (value) {
+            params.set(name, value);
+        }
+    });
+
+    return params.toString();
+}
+
+function renderCompareResult(comparison) {
+    const before = comparison.before || comparison.Before || {};
+    const after = comparison.after || comparison.After || {};
+    const difference = comparison.difference || comparison.Difference || {};
+    const metrics = [
+        ['Ошибки', before.totalErrors ?? before.TotalErrors, after.totalErrors ?? after.TotalErrors, difference.totalErrors ?? difference.TotalErrors],
+        ['Пробелы знаний', before.totalKnowledgeGaps ?? before.TotalKnowledgeGaps, after.totalKnowledgeGaps ?? after.TotalKnowledgeGaps, difference.totalKnowledgeGaps ?? difference.TotalKnowledgeGaps],
+        ['Средний показатель проблемности', before.averageGapScore ?? before.AverageGapScore, after.averageGapScore ?? after.AverageGapScore, difference.averageGapScore ?? difference.AverageGapScore],
+        ['Ошибки высокой серьёзности', before.highSeverityErrorsCount ?? before.HighSeverityErrorsCount, after.highSeverityErrorsCount ?? after.HighSeverityErrorsCount, difference.highSeverityErrorsCount ?? difference.HighSeverityErrorsCount]
+    ];
+
+    return `
+        <div class="compare-result">
+            <div class="compare-interpretation">
+                <span>Интерпретация</span>
+                <strong>${escapeHtml(comparison.interpretation || comparison.Interpretation || 'Существенных изменений не выявлено')}</strong>
+            </div>
+            <div class="compare-snapshot-dates">
+                <span>До: ${escapeHtml(formatComparisonDateTime(before.createdAt || before.CreatedAt))}</span>
+                <span>После: ${escapeHtml(formatComparisonDateTime(after.createdAt || after.CreatedAt))}</span>
+            </div>
+            <div class="compare-cards">
+                ${metrics.map(([label, beforeValue, afterValue, diffValue]) => renderCompareMetric(label, beforeValue, afterValue, diffValue)).join('')}
+            </div>
+            <div class="compare-bars">
+                <h3>Динамика среднего показателя проблемности</h3>
+                ${renderCompareGapBar('До', before.averageGapScore ?? before.AverageGapScore)}
+                ${renderCompareGapBar('После', after.averageGapScore ?? after.AverageGapScore)}
+            </div>
+        </div>
+    `;
+}
+
+function renderCompareMetric(label, beforeValue, afterValue, diffValue) {
+    const numericDiff = Number(diffValue) || 0;
+    const trend = numericDiff < 0 ? 'улучшение' : numericDiff > 0 ? 'ухудшение' : 'без изменений';
+    const trendClass = numericDiff < 0 ? 'compare-trend--good' : numericDiff > 0 ? 'compare-trend--bad' : 'compare-trend--neutral';
+
+    return `
+        <article class="compare-card">
+            <h3>${escapeHtml(label)}</h3>
+            <div class="compare-card__values">
+                <span>Было: <strong>${formatValue(beforeValue)}</strong></span>
+                <span>Стало: <strong>${formatValue(afterValue)}</strong></span>
+                <span>Изменение: <strong>${escapeHtml(formatSignedNumber(diffValue))}</strong></span>
+            </div>
+            <span class="compare-trend ${trendClass}">${escapeHtml(trend)}</span>
+        </article>
+    `;
+}
+
+function renderCompareGapBar(label, value) {
+    const percent = clampPercent(Number(value) || 0);
+
+    return `
+        <div class="compare-bar-row">
+            <div class="compare-bar-row__top">
+                <span>${escapeHtml(label)}</span>
+                <strong>${formatValue(value)}%</strong>
+            </div>
+            <div class="score-indicator__track">
+                <div class="score-indicator__bar ${scoreLevelClass(percent)}" style="width: ${percent}%"></div>
+            </div>
+        </div>
+    `;
+}
+
+function formatSignedNumber(value) {
+    const numericValue = Number(value);
+
+    if (Number.isNaN(numericValue)) {
+        return formatValue(value);
+    }
+
+    return numericValue > 0 ? `+${formatValue(value)}` : formatValue(value);
 }
 
 function renderSummary(summary) {
@@ -984,13 +1447,83 @@ function formatDate(value) {
         return '-';
     }
 
-    const date = new Date(value);
+    const normalizedValue = typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}T/.test(value)
+        && !/(Z|[+-]\d{2}:\d{2})$/i.test(value)
+        ? `${value}Z`
+        : value;
+    const date = new Date(normalizedValue);
 
     if (Number.isNaN(date.getTime())) {
         return String(value);
     }
 
-    return date.toLocaleString('ru-RU');
+    return date.toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatComparisonDateTime(value) {
+    if (!value) {
+        return '-';
+    }
+
+    const normalizedValue = normalizeUtcDateValue(value);
+    const date = new Date(normalizedValue);
+
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    const shiftedDate = addComparisonOffset(date);
+    const dateInfo = formatComparisonDateParts(shiftedDate);
+    const hours = String(shiftedDate.getUTCHours()).padStart(2, '0');
+    const minutes = String(shiftedDate.getUTCMinutes()).padStart(2, '0');
+
+    return `${dateInfo.displayValue}, ${hours}:${minutes}`;
+}
+
+function getComparisonDateInfo(value) {
+    if (!value) {
+        return null;
+    }
+
+    const normalizedValue = normalizeUtcDateValue(value);
+    const date = new Date(normalizedValue);
+
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    return formatComparisonDateParts(addComparisonOffset(date));
+}
+
+function normalizeUtcDateValue(value) {
+    return typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}T/.test(value)
+        && !/(Z|[+-]\d{2}:\d{2})$/i.test(value)
+        ? `${value}Z`
+        : value;
+}
+
+function addComparisonOffset(date) {
+    return new Date(date.getTime() + COMPARISON_TIME_OFFSET_HOURS * 60 * 60 * 1000);
+}
+
+function formatComparisonDateParts(date) {
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const year = String(date.getUTCFullYear());
+
+    return {
+        displayValue: `${day}.${month}.${year}`,
+        inputValue: `${year}-${month}-${day}`
+    };
 }
 
 function formatJsonPreview(value) {

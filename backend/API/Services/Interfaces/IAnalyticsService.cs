@@ -12,5 +12,9 @@ namespace AICourseTester.Services.Interfaces
 		Task<List<AnalyticsSnapshotDTO>> GetGlobalSnapshotsAsync();
 		Task<List<AnalyticsSnapshotDTO>?> GetStudentSnapshotsAsync(string userId);
 		Task<List<AnalyticsSnapshotDTO>?> GetGroupSnapshotsAsync(int groupId);
+		Task<List<AnalyticsSnapshotDTO>?> GetStudentSnapshotsForPeriodAsync(string userId, DateTime? from, DateTime? to);
+		Task<List<AnalyticsSnapshotDTO>?> GetGroupSnapshotsForPeriodAsync(int groupId, DateTime? from, DateTime? to);
+		Task<AnalyticsCompareDTO?> CompareStudentPeriodsAsync(string userId, DateTime? beforeFrom, DateTime? beforeTo, DateTime? afterFrom, DateTime? afterTo);
+		Task<AnalyticsCompareDTO?> CompareGroupPeriodsAsync(int groupId, DateTime? beforeFrom, DateTime? beforeTo, DateTime? afterFrom, DateTime? afterTo);
 	}
 }
