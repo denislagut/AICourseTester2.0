@@ -49,5 +49,16 @@
 		// Older / optional pruning structure
 		public const string OverPruningSubtree = "OVER_PRUNING_SUBTREE";
 		public const string UnderPruningSubtree = "UNDER_PRUNING_SUBTREE";
+
+		public static bool IsSummary(string code)
+		{
+			return code == ValueCorrectPathWrong ||
+				   code == ValuesAndPruningCorrectPathWrong ||
+				   code == ValuesCorrectPruningWrong ||
+				   code == PruningCorrectResultWrongReason ||
+				   code == PruningPathInconsistency ||
+				   code == ValuePruningInconsistency ||
+				   code == ValuePathInconsistency;
+		}
 	}
 }

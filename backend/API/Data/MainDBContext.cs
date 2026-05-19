@@ -119,6 +119,11 @@ namespace AICourseTester.Data
 				.WithMany()
 				.HasForeignKey(g => g.KnowledgeAspectId)
 				.OnDelete(DeleteBehavior.Cascade);
+			modelBuilder.Entity<KnowledgeGap>()
+				.HasOne<AnalysisRun>()
+				.WithMany()
+				.HasForeignKey(g => g.AnalysisRunId)
+				.OnDelete(DeleteBehavior.SetNull);
 
 			modelBuilder.Entity<GeneratedRecommendation>()
 				.HasOne(r => r.User)

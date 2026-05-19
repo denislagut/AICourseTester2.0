@@ -15,7 +15,7 @@ namespace AICourseTester.Services
 			_context = context;
 		}
 
-		public async Task<List<KnowledgeGap>> DetectForAlphaBetaAsync(int alphaBetaId, string userId)
+		public async Task<List<KnowledgeGap>> DetectForAlphaBetaAsync(int alphaBetaId, string userId, int? analysisRunId)
 		{
 			var latestRunId = await GetLatestAnalysisRunIdAsync("AlphaBeta", alphaBetaId, null);
 
@@ -45,13 +45,19 @@ namespace AICourseTester.Services
 				fifteenPuzzleId: null,
 				analysisRunId: latestRunId);
 
+			await ApplyGapDynamicsAsync(
+				gaps,
+				userId,
+				taskType: "AlphaBeta",
+				currentAnalysisRunId: analysisRunId);
+
 			await _context.KnowledgeGaps.AddRangeAsync(gaps);
 			await _context.SaveChangesAsync();
 
 			return gaps;
 		}
 
-		public async Task<List<KnowledgeGap>> DetectForFifteenPuzzleAsync(int fifteenPuzzleId, string userId)
+		public async Task<List<KnowledgeGap>> DetectForFifteenPuzzleAsync(int fifteenPuzzleId, string userId, int? analysisRunId)
 		{
 			var latestRunId = await GetLatestAnalysisRunIdAsync("FifteenPuzzle", null, fifteenPuzzleId);
 
@@ -80,6 +86,12 @@ namespace AICourseTester.Services
 				alphaBetaId: null,
 				fifteenPuzzleId: fifteenPuzzleId,
 				analysisRunId: latestRunId);
+
+			await ApplyGapDynamicsAsync(
+				gaps,
+				userId,
+				taskType: "FifteenPuzzle",
+				currentAnalysisRunId: analysisRunId);
 
 			await _context.KnowledgeGaps.AddRangeAsync(gaps);
 			await _context.SaveChangesAsync();
@@ -154,6 +166,7 @@ namespace AICourseTester.Services
 			int? fifteenPuzzleId,
 			int? analysisRunId)
 		{
+
 			var aspectStats = new Dictionary<int, AspectStat>();
 
 			var effectiveErrors = errors
@@ -236,6 +249,7 @@ namespace AICourseTester.Services
 						ErrorCount = stat.ErrorCount,
 						TotalWeight = Math.Round(stat.TotalWeight, 2),
 						AverageSeverity = Math.Round(averageSeverity, 2),
+						AnalysisRunId = analysisRunId,
 						GapScore = gapScore,
 						Level = DetermineLevel(gapScore),
 						CreatedAt = DateTime.UtcNow
@@ -244,6 +258,52 @@ namespace AICourseTester.Services
 				.Where(g => g.GapScore > 0)
 				.OrderByDescending(g => g.GapScore)
 				.ToList();
+		}
+
+		private async Task ApplyGapDynamicsAsync(
+	List<KnowledgeGap> gaps,
+	string userId,
+	string taskType,
+	int? currentAnalysisRunId)
+		{
+			foreach (var gap in gaps)
+			{
+				var previousGap = await _context.KnowledgeGaps
+					.Where(g =>
+						g.UserId == userId &&
+						g.TaskType == taskType &&
+						g.KnowledgeAspectId == gap.KnowledgeAspectId &&
+						g.AnalysisRunId != currentAnalysisRunId)
+					.OrderByDescending(g => g.CreatedAt)
+					.FirstOrDefaultAsync();
+
+				if (previousGap == null)
+				{
+					gap.PreviousGapScore = null;
+					gap.GapScoreDelta = null;
+					gap.Trend = "New";
+					continue;
+				}
+
+				gap.PreviousGapScore = previousGap.GapScore;
+
+				gap.GapScoreDelta = Math.Round(
+					gap.GapScore - previousGap.GapScore,
+					2);
+
+				if (gap.GapScoreDelta <= -5)
+				{
+					gap.Trend = "Improved";
+				}
+				else if (gap.GapScoreDelta >= 5)
+				{
+					gap.Trend = "Worsened";
+				}
+				else
+				{
+					gap.Trend = "Stable";
+				}
+			}
 		}
 
 		private static bool ShouldAffectKnowledgeGap(ErrorRecord error)

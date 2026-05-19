@@ -48,6 +48,7 @@ namespace AICourseTester.Models
 		public int? ActualPathNodeId { get; set; }
 
 		public bool IsPrimary { get; set; } = true;
+		public bool IsSummary { get; set; } = false;
 		public double SeverityScore { get; set; }
 
 		[MaxLength(128)]

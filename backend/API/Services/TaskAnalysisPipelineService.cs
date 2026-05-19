@@ -67,7 +67,8 @@ namespace AICourseTester.Services
 
 				await _knowledgeGapDetectionService.DetectForFifteenPuzzleAsync(
 					fifteenPuzzleId,
-					userId);
+					userId,
+					analysisRun.Id);
 
 				analysisRun.Status = "Completed";
 				analysisRun.CompletedAt = DateTime.UtcNow;
@@ -120,7 +121,8 @@ namespace AICourseTester.Services
 
 				await _knowledgeGapDetectionService.DetectForAlphaBetaAsync(
 					alphaBetaId,
-					userId);
+					userId,
+					analysisRun.Id);
 
 				analysisRun.Status = "Completed";
 				analysisRun.CompletedAt = DateTime.UtcNow;
@@ -238,7 +240,8 @@ namespace AICourseTester.Services
 				ExpectedPathNodeId = error.ExpectedPathNodeId,
 				ActualPathNodeId = error.ActualPathNodeId,
 
-				IsPrimary = error.IsPrimary,
+				IsPrimary = !ErrorCodes.IsSummary(error.Code) && error.IsPrimary,
+				IsSummary = ErrorCodes.IsSummary(error.Code),
 				SeverityScore = error.SeverityScore,
 				GroupKey = error.GroupKey,
 				CreatedAt = DateTime.UtcNow,
