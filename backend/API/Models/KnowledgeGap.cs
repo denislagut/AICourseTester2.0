@@ -32,6 +32,14 @@ namespace AICourseTester.Models
 
 		public double AverageSeverity { get; set; }
 
+		public int? AnalysisRunId { get; set; }
+
+		public double? PreviousGapScore { get; set; }
+
+		public double? GapScoreDelta { get; set; }
+
+		public string Trend { get; set; } = "Stable";
+
 		public double GapScore { get; set; }
 
 		[MaxLength(32)]

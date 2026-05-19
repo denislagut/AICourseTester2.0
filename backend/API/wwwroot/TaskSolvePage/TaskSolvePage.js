@@ -24,10 +24,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         adminLink.style.display = 'none';
     }
 
+    let userId = null;
+
     try {
         const urlParams = new URLSearchParams(window.location.search);
         const taskId = urlParams.get('taskId');
-        const userId = urlParams.get('userId');
+        userId = urlParams.get('userId');
         const taskType = urlParams.get('taskType');
         const isViewMode = urlParams.get('view') === 'true';
         const isTrainingMode = taskType === 'train';
@@ -48,8 +50,15 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
             return;
         }
-
-        renderTree(taskData.problem.head, null, 0, taskData.userSolution, taskData.userPath, taskData.isSolved);
+        renderTree(
+            taskData.problem.head,
+            null,
+            0,
+            taskData.userSolution,
+            taskData.userPath,
+            taskData.userPrunedNodeIds,
+            taskData.isSolved
+        );
         resetEventListeners(isViewMode, isTrainingMode);
 
         if (isViewMode || taskData.isSolved) {
@@ -352,7 +361,7 @@ function resetEventListeners(isViewMode = false, isTrainingMode = false) {
                         solutionMessage.innerHTML = '';
                     }
 
-                    renderTree(taskData.problem.head, null, 0, null, null, false);
+                    renderTree(taskData.problem.head, null, 0, null, null, null, false);
                     resetEventListeners(isViewMode, isTrainingMode); // Перерегистрируем обработчики с новым taskData
                 } catch (error) {
                     console.error('Ошибка применения настроек:', error);
@@ -850,7 +859,7 @@ function renderTree(
             line.dataset.childId = childNode.id;
             
             let strokeColor = '#808080';
-            const prunedSet = new Set(userPrunedNodeIds || []);
+            const prunedSet = new Set(Array.isArray(userPrunedNodeIds) ? userPrunedNodeIds : []);
 
             if (isSolved && userPath && userSolution) {
                 if (userPathSet.has(childNode.id)) {
@@ -892,7 +901,15 @@ function renderTree(
             
             svg.appendChild(line);
             svg.appendChild(hitArea);
-            renderTree(childNode, childrenContainer, level + 1, userSolution, userPath, isSolved);
+            renderTree(
+                childNode,
+                childrenContainer,
+                level + 1,
+                userSolution,
+                userPath,
+                userPrunedNodeIds,
+                isSolved
+            );
         });
     }
 }

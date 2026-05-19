@@ -20,6 +20,7 @@
 		public int? ActualPathNodeId { get; set; }
 
 		public bool IsPrimary { get; set; } = true;
+		public bool IsSummary { get; set; }
 		public double SeverityScore { get; set; }
 		public string? GroupKey { get; set; }
 		public int? RootBranchId { get; set; }

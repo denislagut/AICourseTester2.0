@@ -3,17 +3,20 @@ using System;
 using AICourseTester.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace AICourseTester.Migrations
+namespace API.Migrations
 {
     [DbContext(typeof(MainDbContext))]
-    partial class MainDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260519074309_AddIsSummaryToErrorRecord")]
+    partial class AddIsSummaryToErrorRecord
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -667,9 +670,6 @@ namespace AICourseTester.Migrations
                     b.Property<int?>("AlphaBetaId")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("AnalysisRunId")
-                        .HasColumnType("integer");
-
                     b.Property<double>("AverageSeverity")
                         .HasColumnType("double precision");
 
@@ -685,9 +685,6 @@ namespace AICourseTester.Migrations
                     b.Property<double>("GapScore")
                         .HasColumnType("double precision");
 
-                    b.Property<double?>("GapScoreDelta")
-                        .HasColumnType("double precision");
-
                     b.Property<int>("KnowledgeAspectId")
                         .HasColumnType("integer");
 
@@ -695,9 +692,6 @@ namespace AICourseTester.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
-
-                    b.Property<double?>("PreviousGapScore")
-                        .HasColumnType("double precision");
 
                     b.Property<string>("TaskType")
                         .IsRequired()
@@ -707,10 +701,6 @@ namespace AICourseTester.Migrations
                     b.Property<double>("TotalWeight")
                         .HasColumnType("double precision");
 
-                    b.Property<string>("Trend")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasColumnType("text");
@@ -718,8 +708,6 @@ namespace AICourseTester.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AlphaBetaId");
-
-                    b.HasIndex("AnalysisRunId");
 
                     b.HasIndex("FifteenPuzzleId");
 
@@ -1032,11 +1020,6 @@ namespace AICourseTester.Migrations
                         .WithMany()
                         .HasForeignKey("AlphaBetaId")
                         .OnDelete(DeleteBehavior.Cascade);
-
-                    b.HasOne("AICourseTester.Models.Analysis.AnalysisRun", null)
-                        .WithMany()
-                        .HasForeignKey("AnalysisRunId")
-                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("AICourseTester.Models.FifteenPuzzle", "FifteenPuzzle")
                         .WithMany()
