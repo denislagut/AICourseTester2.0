@@ -311,7 +311,10 @@ namespace AICourseTester.Services
 			if (error.ErrorType == null)
 				return false;
 
-			if (IsSummaryOrMetaError(error.Code))
+			if (error.IsSummary)
+				return false;
+
+			if (!error.IsPrimary)
 				return false;
 
 			return true;

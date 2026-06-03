@@ -307,7 +307,11 @@ namespace AICourseTester.Services
 				ExpectedPathNodeId = error.ExpectedPathNodeId,
 				ActualPathNodeId = error.ActualPathNodeId,
 
-				IsPrimary = !ErrorCodes.IsSummary(error.Code) && error.IsPrimary,
+				IsPrimary =
+					!ErrorCodes.IsSummary(error.Code) &&
+					!ErrorCodes.IsDerived(error.Code) &&
+					error.IsPrimary,
+
 				IsSummary = ErrorCodes.IsSummary(error.Code),
 				SeverityScore = error.SeverityScore,
 				GroupKey = error.GroupKey,

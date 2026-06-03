@@ -752,8 +752,6 @@ namespace AICourseTester.Services
 				("SOLUTION_CONSISTENCY_ERROR", "Согласованность решения", 1.0),
 
 				("MIN_MAX_ROLE_CONFUSION_ERROR", "Различение ролей MIN и MAX", 1.0),
-				("MIN_LEVEL_AGGREGATION_ERROR", "Различение ролей MIN и MAX", 0.7),
-				("MAX_LEVEL_AGGREGATION_ERROR", "Различение ролей MIN и MAX", 0.7),
 
 				("EARLY_PRUNING_ERROR_TYPE", "Определение момента отсечения", 1.0),
 				("MISSED_PRUNING_ERROR_TYPE", "Определение момента отсечения", 0.8),

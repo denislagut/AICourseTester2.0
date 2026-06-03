@@ -60,5 +60,14 @@
 				   code == ValuePruningInconsistency ||
 				   code == ValuePathInconsistency;
 		}
+
+		public static bool IsDerived(string code)
+		{
+			return code == MinLevelConfusion ||
+				   code == RootMaxConfusion ||
+				   code == ValueAffectedByWrongPruning ||
+				   code == PathNotMaximizingRootValue ||
+				   code == FDerivedFromIncorrectComponents;
+		}
 	}
 }
