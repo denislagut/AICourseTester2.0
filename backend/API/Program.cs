@@ -150,12 +150,22 @@ builder.Services.AddRateLimiter(options =>
 });
 
 builder.Services.AddScoped<ITaskAnalysisPipelineService, TaskAnalysisPipelineService>();
+
+builder.Services.AddScoped<ITaskAnalysisStrategy, AlphaBetaAnalysisStrategy>();
+builder.Services.AddScoped<ITaskAnalysisStrategy, FifteenPuzzleAnalysisStrategy>();
+builder.Services.AddScoped<AnalysisStrategyRegistry>();
+
 builder.Services.AddScoped<IErrorCausalityBuilder, ErrorCausalityBuilder>();
+
 builder.Services.AddScoped<IAlphaBetaErrorAnalysisService, AlphaBetaErrorAnalysisService>();
 builder.Services.AddScoped<IFifteenPuzzleErrorAnalysisService, FifteenPuzzleErrorAnalysisService>();
+
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
+
 builder.Services.AddScoped<IKnowledgeGapDetectionService, KnowledgeGapDetectionService>();
+
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+
 builder.Services.AddScoped<IRecommendationService, RecommendationService>();
 builder.Services.AddScoped<IReportsService, ReportsService>();
 builder.Services.AddScoped<IReportExportService, ReportExportService>();

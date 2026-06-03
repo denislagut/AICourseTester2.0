@@ -163,12 +163,10 @@ namespace AICourseTester.Controllers
 			_context.Fifteens.Update(fp);
 			await _context.SaveChangesAsync();
 
-			await _taskAnalysisPipelineService.AnalyzeFifteenPuzzleAsync(
+			await _taskAnalysisPipelineService.AnalyzeAsync(
+	            "FifteenPuzzle",
 	            fp.Id,
-	            fp.UserId,
-	            userSolution,
-	            solution,
-	            (int)fp.Heuristic);
+	            fp.UserId);
 
 			return solution;
 		}
