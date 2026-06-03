@@ -67,7 +67,9 @@
 				   code == RootMaxConfusion ||
 				   code == ValueAffectedByWrongPruning ||
 				   code == PathNotMaximizingRootValue ||
-				   code == FDerivedFromIncorrectComponents;
+				   code == FDerivedFromIncorrectComponents ||
+				   code == EarlyPruningError ||
+				   code == MissedPruningError;
 		}
 	}
 }
