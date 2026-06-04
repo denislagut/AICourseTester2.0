@@ -12,7 +12,9 @@ namespace AICourseTester.Services
 		private const string AnalyzerVersion = "1.0";
 
 		private readonly MainDbContext _context;
+
 		private readonly IErrorCausalityBuilder _errorCausalityBuilder;
+		private readonly AnalysisStrategyRegistry _strategyRegistry;
 		private readonly IFifteenPuzzleErrorAnalysisService _fifteenPuzzleErrorAnalysisService;
 		private readonly IAlphaBetaErrorAnalysisService _alphaBetaErrorAnalysisService;
 		private readonly IErrorClassificationService _errorClassificationService;
@@ -21,6 +23,7 @@ namespace AICourseTester.Services
 		public TaskAnalysisPipelineService(
 			MainDbContext context,
 			IErrorCausalityBuilder errorCausalityBuilder,
+			AnalysisStrategyRegistry strategyRegistry,
 			IFifteenPuzzleErrorAnalysisService fifteenPuzzleErrorAnalysisService,
 			IAlphaBetaErrorAnalysisService alphaBetaErrorAnalysisService,
 			IErrorClassificationService errorClassificationService,
@@ -28,10 +31,74 @@ namespace AICourseTester.Services
 		{
 			_context = context;
 			_errorCausalityBuilder = errorCausalityBuilder;
+			_strategyRegistry = strategyRegistry;
 			_fifteenPuzzleErrorAnalysisService = fifteenPuzzleErrorAnalysisService;
 			_alphaBetaErrorAnalysisService = alphaBetaErrorAnalysisService;
 			_errorClassificationService = errorClassificationService;
 			_knowledgeGapDetectionService = knowledgeGapDetectionService;
+		}
+
+		public async Task<ITaskAnalysisResult> AnalyzeAsync(
+			string taskType,
+			int taskId,
+			string userId)
+		{
+			var strategy = _strategyRegistry.GetStrategy(taskType);
+
+			var analysisRun = await CreateAnalysisRunAsync(
+				taskType: taskType,
+				userId: userId,
+				alphaBetaId: taskType == "AlphaBeta" ? taskId : null,
+				fifteenPuzzleId: taskType == "FifteenPuzzle" ? taskId : null);
+
+			await using var transaction = await _context.Database.BeginTransactionAsync();
+
+			try
+			{
+				var analysisResult = await strategy.AnalyzeAsync(taskId, userId);
+
+				await SaveErrorsAsync(
+					taskType: taskType,
+					analysisRunId: analysisRun.Id,
+					alphaBetaId: taskType == "AlphaBeta" ? taskId : null,
+					fifteenPuzzleId: taskType == "FifteenPuzzle" ? taskId : null,
+					analysisResult: analysisResult);
+
+				if (taskType == "AlphaBeta")
+				{
+					await _errorClassificationService.ClassifyErrorsAsync(taskId);
+
+					await _knowledgeGapDetectionService.DetectForAlphaBetaAsync(
+						taskId,
+						userId,
+						analysisRun.Id);
+				}
+				else if (taskType == "FifteenPuzzle")
+				{
+					await _errorClassificationService.ClassifyFifteenPuzzleErrorsAsync(taskId);
+
+					await _knowledgeGapDetectionService.DetectForFifteenPuzzleAsync(
+						taskId,
+						userId,
+						analysisRun.Id);
+				}
+
+				analysisRun.Status = "Completed";
+				analysisRun.CompletedAt = DateTime.UtcNow;
+
+				await _context.SaveChangesAsync();
+				await transaction.CommitAsync();
+
+				return analysisResult;
+			}
+			catch (Exception ex)
+			{
+				await transaction.RollbackAsync();
+
+				await MarkAnalysisRunFailedAsync(analysisRun.Id, ex);
+
+				throw;
+			}
 		}
 
 		public async Task<ITaskAnalysisResult> AnalyzeFifteenPuzzleAsync(
@@ -240,7 +307,11 @@ namespace AICourseTester.Services
 				ExpectedPathNodeId = error.ExpectedPathNodeId,
 				ActualPathNodeId = error.ActualPathNodeId,
 
-				IsPrimary = !ErrorCodes.IsSummary(error.Code) && error.IsPrimary,
+				IsPrimary =
+					!ErrorCodes.IsSummary(error.Code) &&
+					!ErrorCodes.IsDerived(error.Code) &&
+					error.IsPrimary,
+
 				IsSummary = ErrorCodes.IsSummary(error.Code),
 				SeverityScore = error.SeverityScore,
 				GroupKey = error.GroupKey,

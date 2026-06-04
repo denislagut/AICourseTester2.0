@@ -170,12 +170,10 @@ namespace AICourseTester.Controllers
 			_context.AlphaBeta.Update(ab);
 			await _context.SaveChangesAsync();
 
-			await _taskAnalysisPipelineService.AnalyzeAlphaBetaAsync(
+			await _taskAnalysisPipelineService.AnalyzeAsync(
+				"AlphaBeta",
 				ab.Id,
-				ab.UserId,
-				problem,
-				userSolution,
-				solution);
+				ab.UserId);
 
 			return solution;
 		}
