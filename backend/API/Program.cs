@@ -62,7 +62,7 @@ builder.Services.AddSwaggerGen(options =>
 		Scheme = "bearer",
 		BearerFormat = "JWT",
 		In = ParameterLocation.Header,
-		Description = "¬ведите токен в формате: Bearer {token}"
+		Description = "¬ведите только accessToken без префикса Bearer"
 	});
 
 	options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -102,8 +102,35 @@ builder.Services
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<MainDbContext>();
 
-builder.Services.AddAuthentication();
+builder.Services.AddAuthentication(IdentityConstants.BearerScheme);
 builder.Services.AddAuthorization();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Events.OnRedirectToLogin = context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+
+        context.Response.Redirect(context.RedirectUri);
+        return Task.CompletedTask;
+    };
+
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+
+        context.Response.Redirect(context.RedirectUri);
+        return Task.CompletedTask;
+    };
+});
 
 builder.Services.AddImageSharp();
 
@@ -278,5 +305,8 @@ if (url != null)
         }
     }
 }
+app.MapFallback("/api/{**catchAll}", () => Results.NotFound(new { message = "API endpoint not found" }));
 app.MapFallbackToFile("index.html");
 app.Run();
+
+

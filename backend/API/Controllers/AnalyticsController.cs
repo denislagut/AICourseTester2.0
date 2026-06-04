@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AICourseTester.Controllers
 {
-	[Authorize]
+	[Authorize(AuthenticationSchemes = "Identity.Bearer")]
 	[Route("api/[controller]")]
 	[ApiController]
 	public class AnalyticsController : ControllerBase
@@ -35,10 +35,27 @@ namespace AICourseTester.Controllers
 			return Ok(await _analyticsService.GetTopKnowledgeGapsAsync());
 		}
 
-		[HttpGet("Students/{userId}")]
-		public async Task<ActionResult<StudentAnalyticsDTO>> GetStudentAnalytics(string userId)
+		[HttpGet("ErrorTypes")]
+		public async Task<ActionResult<List<ErrorTypeReferenceDTO>>> GetErrorTypes()
 		{
-			var analytics = await _analyticsService.GetStudentAnalyticsAsync(userId);
+			return Ok(await _analyticsService.GetErrorTypesAsync());
+		}
+
+		[HttpGet("KnowledgeAspects")]
+		public async Task<ActionResult<List<KnowledgeAspectReferenceDTO>>> GetKnowledgeAspects()
+		{
+			return Ok(await _analyticsService.GetKnowledgeAspectsAsync());
+		}
+
+		[HttpGet("Students/{userId}")]
+		public async Task<ActionResult<StudentAnalyticsDTO>> GetStudentAnalytics(
+			string userId,
+			[FromQuery(Name = "excludedErrorTypeIds")] List<int>? excludedErrorTypeIds,
+			[FromQuery(Name = "excludedKnowledgeAspectIds")] List<int>? excludedKnowledgeAspectIds)
+		{
+			var analytics = await _analyticsService.GetStudentAnalyticsAsync(
+				userId,
+				BuildFilters(excludedErrorTypeIds, excludedKnowledgeAspectIds));
 
 			if (analytics == null)
 			{
@@ -48,10 +65,34 @@ namespace AICourseTester.Controllers
 			return Ok(analytics);
 		}
 
-		[HttpGet("Groups/{groupId:int}")]
-		public async Task<ActionResult<GroupAnalyticsDTO>> GetGroupAnalytics(int groupId)
+		[HttpGet("Students/{userId}/ActivityDates")]
+		public async Task<ActionResult<List<string>>> GetStudentActivityDates(string userId)
 		{
-			var analytics = await _analyticsService.GetGroupAnalyticsAsync(groupId);
+			try
+			{
+				var dates = await _analyticsService.GetStudentActivityDatesAsync(userId);
+
+				return Ok(dates ?? new List<string>());
+			}
+			catch (Exception exception)
+			{
+				return StatusCode(StatusCodes.Status500InternalServerError, new
+				{
+					message = "Не удалось получить даты прохождения заданий студента",
+					error = exception.Message
+				});
+			}
+		}
+
+		[HttpGet("Groups/{groupId:int}")]
+		public async Task<ActionResult<GroupAnalyticsDTO>> GetGroupAnalytics(
+			int groupId,
+			[FromQuery(Name = "excludedErrorTypeIds")] List<int>? excludedErrorTypeIds,
+			[FromQuery(Name = "excludedKnowledgeAspectIds")] List<int>? excludedKnowledgeAspectIds)
+		{
+			var analytics = await _analyticsService.GetGroupAnalyticsAsync(
+				groupId,
+				BuildFilters(excludedErrorTypeIds, excludedKnowledgeAspectIds));
 
 			if (analytics == null)
 			{
@@ -59,6 +100,25 @@ namespace AICourseTester.Controllers
 			}
 
 			return Ok(analytics);
+		}
+
+		[HttpGet("Groups/{groupId:int}/ActivityDates")]
+		public async Task<ActionResult<List<string>>> GetGroupActivityDates(int groupId)
+		{
+			try
+			{
+				var dates = await _analyticsService.GetGroupActivityDatesAsync(groupId);
+
+				return Ok(dates ?? new List<string>());
+			}
+			catch (Exception exception)
+			{
+				return StatusCode(StatusCodes.Status500InternalServerError, new
+				{
+					message = "Не удалось получить даты прохождения заданий группы",
+					error = exception.Message
+				});
+			}
 		}
 
 		[HttpGet("Snapshots/Global")]
@@ -131,11 +191,19 @@ namespace AICourseTester.Controllers
 			[FromQuery] DateTime? beforeFrom,
 			[FromQuery] DateTime? beforeTo,
 			[FromQuery] DateTime? afterFrom,
-			[FromQuery] DateTime? afterTo)
+			[FromQuery] DateTime? afterTo,
+			[FromQuery(Name = "excludedErrorTypeIds")] List<int>? excludedErrorTypeIds,
+			[FromQuery(Name = "excludedKnowledgeAspectIds")] List<int>? excludedKnowledgeAspectIds)
 		{
 			try
 			{
-				var comparison = await _analyticsService.CompareStudentPeriodsAsync(userId, beforeFrom, beforeTo, afterFrom, afterTo);
+				var comparison = await _analyticsService.CompareStudentPeriodsAsync(
+					userId,
+					beforeFrom,
+					beforeTo,
+					afterFrom,
+					afterTo,
+					BuildFilters(excludedErrorTypeIds, excludedKnowledgeAspectIds));
 
 				if (comparison == null)
 				{
@@ -156,11 +224,19 @@ namespace AICourseTester.Controllers
 			[FromQuery] DateTime? beforeFrom,
 			[FromQuery] DateTime? beforeTo,
 			[FromQuery] DateTime? afterFrom,
-			[FromQuery] DateTime? afterTo)
+			[FromQuery] DateTime? afterTo,
+			[FromQuery(Name = "excludedErrorTypeIds")] List<int>? excludedErrorTypeIds,
+			[FromQuery(Name = "excludedKnowledgeAspectIds")] List<int>? excludedKnowledgeAspectIds)
 		{
 			try
 			{
-				var comparison = await _analyticsService.CompareGroupPeriodsAsync(groupId, beforeFrom, beforeTo, afterFrom, afterTo);
+				var comparison = await _analyticsService.CompareGroupPeriodsAsync(
+					groupId,
+					beforeFrom,
+					beforeTo,
+					afterFrom,
+					afterTo,
+					BuildFilters(excludedErrorTypeIds, excludedKnowledgeAspectIds));
 
 				if (comparison == null)
 				{
@@ -174,5 +250,25 @@ namespace AICourseTester.Controllers
 				return BadRequest(exception.Message);
 			}
 		}
+
+		private static AnalyticsFilterDTO BuildFilters(
+			List<int>? excludedErrorTypeIds,
+			List<int>? excludedKnowledgeAspectIds)
+		{
+			return new AnalyticsFilterDTO
+			{
+				ExcludedErrorTypeIds = NormalizeIds(excludedErrorTypeIds),
+				ExcludedKnowledgeAspectIds = NormalizeIds(excludedKnowledgeAspectIds)
+			};
+		}
+
+		private static List<int> NormalizeIds(IEnumerable<int>? ids)
+		{
+			return ids?
+				.Where(id => id > 0)
+				.Distinct()
+				.ToList() ?? new List<int>();
+		}
+
 	}
 }

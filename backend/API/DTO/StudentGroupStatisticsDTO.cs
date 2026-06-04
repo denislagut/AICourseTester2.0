@@ -1,16 +1,15 @@
 namespace AICourseTester.DTO
 {
-	public class GroupAnalyticsDTO
+	public class StudentGroupStatisticsDTO
 	{
-		public int GroupId { get; set; }
-		public string GroupName { get; set; } = null!;
-		public int StudentsCount { get; set; }
+		public string UserId { get; set; } = null!;
+		public string? UserName { get; set; }
+		public string? FullName { get; set; }
 		public int TotalErrors { get; set; }
 		public int TotalKnowledgeGaps { get; set; }
 		public double AverageGapScore { get; set; }
 		public int HighSeverityErrorsCount { get; set; }
 		public List<TopErrorTypeDTO> TopErrorTypes { get; set; } = new();
 		public List<TopKnowledgeGapDTO> TopKnowledgeGaps { get; set; } = new();
-		public List<StudentGroupStatisticsDTO> StudentsStatistics { get; set; } = new();
 	}
 }

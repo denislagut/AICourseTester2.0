@@ -127,7 +127,39 @@ namespace AICourseTester.Services
 				.ToList();
 		}
 
-		public async Task<StudentAnalyticsDTO?> GetStudentAnalyticsAsync(string userId)
+		public async Task<List<ErrorTypeReferenceDTO>> GetErrorTypesAsync()
+		{
+			return await _context.ErrorTypes
+				.AsNoTracking()
+				.OrderBy(e => e.Name)
+				.Select(e => new ErrorTypeReferenceDTO
+				{
+					Id = e.Id,
+					Code = e.Code,
+					Name = e.Name,
+					Description = e.Description
+				})
+				.ToListAsync();
+		}
+
+		public async Task<List<KnowledgeAspectReferenceDTO>> GetKnowledgeAspectsAsync()
+		{
+			return await _context.KnowledgeAspects
+				.AsNoTracking()
+				.Where(a => a.IsActive)
+				.OrderBy(a => a.TopicName)
+				.ThenBy(a => a.Name)
+				.Select(a => new KnowledgeAspectReferenceDTO
+				{
+					Id = a.Id,
+					Name = a.Name,
+					Topic = a.TopicName,
+					Description = a.Description
+				})
+				.ToListAsync();
+		}
+
+		public async Task<StudentAnalyticsDTO?> GetStudentAnalyticsAsync(string userId, AnalyticsFilterDTO? filters = null)
 		{
 			var user = await _context.Users
 				.AsNoTracking()
@@ -160,6 +192,7 @@ namespace AICourseTester.Services
 
 			var errors = await LoadErrorsForUsersAsync(new[] { userId });
 			var gaps = await LoadKnowledgeGapsForUsersAsync(new[] { userId });
+			(errors, gaps) = await ApplyAnalyticsFiltersAsync(errors, gaps, filters);
 
 			var analytics = new StudentAnalyticsDTO
 			{
@@ -176,12 +209,15 @@ namespace AICourseTester.Services
 				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps)
 			};
 
-			await SaveStudentSnapshotAsync(analytics);
+			if (!HasActiveFilters(filters))
+			{
+				await SaveStudentSnapshotAsync(analytics);
+			}
 
 			return analytics;
 		}
 
-		public async Task<GroupAnalyticsDTO?> GetGroupAnalyticsAsync(int groupId)
+		public async Task<GroupAnalyticsDTO?> GetGroupAnalyticsAsync(int groupId, AnalyticsFilterDTO? filters = null)
 		{
 			var group = await _context.Groups
 				.AsNoTracking()
@@ -198,11 +234,20 @@ namespace AICourseTester.Services
 				return null;
 			}
 
-			var userIds = await _context.UserGroups
+			var groupStudents = await _context.UserGroups
 				.AsNoTracking()
 				.Where(ug => ug.GroupId == groupId)
-				.Select(ug => ug.UserId)
+				.Include(ug => ug.User)
+				.Select(ug => new
+				{
+					ug.UserId,
+					ug.User.UserName,
+					ug.User.Name,
+					ug.User.SecondName,
+					ug.User.Patronymic
+				})
 				.ToListAsync();
+			var userIds = groupStudents.Select(student => student.UserId).ToList();
 
 			var errors = userIds.Count == 0
 				? new List<Models.ErrorRecord>()
@@ -211,6 +256,7 @@ namespace AICourseTester.Services
 			var gaps = userIds.Count == 0
 				? new List<Models.KnowledgeGap>()
 				: await LoadKnowledgeGapsForUsersAsync(userIds);
+			(errors, gaps) = await ApplyAnalyticsFiltersAsync(errors, gaps, filters);
 
 			var analytics = new GroupAnalyticsDTO
 			{
@@ -222,10 +268,22 @@ namespace AICourseTester.Services
 				AverageGapScore = CalculateAverageGapScore(gaps),
 				HighSeverityErrorsCount = errors.Count(e => e.SeverityScore >= HighSeverityThreshold),
 				TopErrorTypes = BuildTopErrorTypes(errors),
-				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps)
+				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps),
+				StudentsStatistics = groupStudents
+					.Select(student => BuildStudentGroupStatistics(
+						student.UserId,
+						student.UserName,
+						BuildFullName(student.SecondName, student.Name, student.Patronymic),
+						errors,
+						gaps))
+					.OrderBy(student => student.FullName ?? student.UserName ?? student.UserId)
+					.ToList()
 			};
 
-			await SaveGroupSnapshotAsync(analytics);
+			if (!HasActiveFilters(filters))
+			{
+				await SaveGroupSnapshotAsync(analytics);
+			}
 
 			return analytics;
 		}
@@ -382,7 +440,8 @@ namespace AICourseTester.Services
 			DateTime? beforeFrom,
 			DateTime? beforeTo,
 			DateTime? afterFrom,
-			DateTime? afterTo)
+			DateTime? afterTo,
+			AnalyticsFilterDTO? filters = null)
 		{
 			var studentExists = await _context.Users
 				.AsNoTracking()
@@ -393,8 +452,8 @@ namespace AICourseTester.Services
 				return null;
 			}
 
-			var before = await GetLatestSnapshotForPeriodAsync("Student", userId, null, beforeFrom, beforeTo);
-			var after = await GetLatestSnapshotForPeriodAsync("Student", userId, null, afterFrom, afterTo);
+			var before = await BuildSourceAnalyticsForPeriodAsync(new[] { userId }, beforeFrom, beforeTo, filters);
+			var after = await BuildSourceAnalyticsForPeriodAsync(new[] { userId }, afterFrom, afterTo, filters);
 
 			return BuildCompareResult(before, after);
 		}
@@ -404,7 +463,8 @@ namespace AICourseTester.Services
 			DateTime? beforeFrom,
 			DateTime? beforeTo,
 			DateTime? afterFrom,
-			DateTime? afterTo)
+			DateTime? afterTo,
+			AnalyticsFilterDTO? filters = null)
 		{
 			var groupExists = await _context.Groups
 				.AsNoTracking()
@@ -415,23 +475,342 @@ namespace AICourseTester.Services
 				return null;
 			}
 
-			var before = await GetLatestSnapshotForPeriodAsync("Group", null, groupId, beforeFrom, beforeTo);
-			var after = await GetLatestSnapshotForPeriodAsync("Group", null, groupId, afterFrom, afterTo);
+			var groupStudents = await _context.UserGroups
+				.AsNoTracking()
+				.Where(ug => ug.GroupId == groupId)
+				.Include(ug => ug.User)
+				.Select(ug => new
+				{
+					ug.UserId,
+					ug.User.UserName,
+					ug.User.Name,
+					ug.User.SecondName,
+					ug.User.Patronymic
+				})
+				.ToListAsync();
+			var userIds = groupStudents.Select(student => student.UserId).ToList();
+
+			var before = await BuildSourceAnalyticsForPeriodAsync(userIds, beforeFrom, beforeTo, filters);
+			var after = await BuildSourceAnalyticsForPeriodAsync(userIds, afterFrom, afterTo, filters);
 
 			return BuildCompareResult(before, after);
+		}
+
+		public async Task<List<string>?> GetStudentActivityDatesAsync(string userId)
+		{
+			var studentExists = await _context.Users
+				.AsNoTracking()
+				.AnyAsync(u => u.Id == userId);
+
+			if (!studentExists)
+			{
+				return null;
+			}
+
+			return await GetActivityDatesForUsersAsync(new[] { userId });
+		}
+
+		public async Task<List<string>?> GetGroupActivityDatesAsync(int groupId)
+		{
+			var groupExists = await _context.Groups
+				.AsNoTracking()
+				.AnyAsync(g => g.Id == groupId);
+
+			if (!groupExists)
+			{
+				return null;
+			}
+
+			var groupStudents = await _context.UserGroups
+				.AsNoTracking()
+				.Where(ug => ug.GroupId == groupId)
+				.Include(ug => ug.User)
+				.Select(ug => new
+				{
+					ug.UserId,
+					ug.User.UserName,
+					ug.User.Name,
+					ug.User.SecondName,
+					ug.User.Patronymic
+				})
+				.ToListAsync();
+			var userIds = groupStudents.Select(student => student.UserId).ToList();
+
+			return await GetActivityDatesForUsersAsync(userIds);
+		}
+
+		private async Task<AnalyticsSnapshot?> BuildSourceAnalyticsForPeriodAsync(
+			IReadOnlyCollection<string> userIds,
+			DateTime? from,
+			DateTime? to,
+			AnalyticsFilterDTO? filters = null)
+		{
+			if (userIds.Count == 0)
+			{
+				return null;
+			}
+
+			var (fromUtc, toUtc) = BuildUtcPeriod(from, to);
+			var analysisRuns = await _context.AnalysisRuns
+				.AsNoTracking()
+				.Where(r => userIds.Contains(r.UserId) && r.CompletedAt.HasValue)
+				.ToListAsync();
+			var periodAnalysisRuns = analysisRuns
+				.Where(r => IsInPeriod(EnsureUtc(r.CompletedAt!.Value), fromUtc, toUtc))
+				.ToList();
+			var periodAnalysisRunIds = periodAnalysisRuns
+				.Select(r => r.Id)
+				.ToList();
+
+			var periodErrors = periodAnalysisRunIds.Count == 0
+				? new List<Models.ErrorRecord>()
+				: await _context.ErrorRecords
+					.AsNoTracking()
+					.Include(e => e.ErrorType)
+					.Where(e => e.AnalysisRunId.HasValue && periodAnalysisRunIds.Contains(e.AnalysisRunId.Value))
+					.ToListAsync();
+			var periodGaps = periodAnalysisRunIds.Count == 0
+				? new List<Models.KnowledgeGap>()
+				: await _context.KnowledgeGaps
+					.AsNoTracking()
+					.Include(g => g.KnowledgeAspect)
+					.Where(g => g.AnalysisRunId.HasValue && periodAnalysisRunIds.Contains(g.AnalysisRunId.Value))
+					.ToListAsync();
+
+			var fallbackErrors = await _context.ErrorRecords
+				.AsNoTracking()
+				.Include(e => e.ErrorType)
+				.Include(e => e.AlphaBeta)
+				.Include(e => e.FifteenPuzzle)
+				.Where(e =>
+					!e.AnalysisRunId.HasValue &&
+					((e.AlphaBeta != null && userIds.Contains(e.AlphaBeta.UserId)) ||
+					(e.FifteenPuzzle != null && userIds.Contains(e.FifteenPuzzle.UserId))))
+				.ToListAsync();
+			periodErrors.AddRange(fallbackErrors
+				.Where(e => IsInPeriod(EnsureUtc(e.CreatedAt), fromUtc, toUtc)));
+
+			var fallbackGaps = await _context.KnowledgeGaps
+				.AsNoTracking()
+				.Include(g => g.KnowledgeAspect)
+				.Where(g => !g.AnalysisRunId.HasValue && userIds.Contains(g.UserId))
+				.ToListAsync();
+			periodGaps.AddRange(fallbackGaps
+				.Where(g => IsInPeriod(EnsureUtc(g.CreatedAt), fromUtc, toUtc)));
+			(periodErrors, periodGaps) = await ApplyAnalyticsFiltersAsync(periodErrors, periodGaps, filters);
+
+			var activityDates = periodAnalysisRuns
+				.Select(r => EnsureUtc(r.CompletedAt!.Value))
+				.Concat(periodErrors
+					.Where(e => !e.AnalysisRunId.HasValue)
+					.Select(e => EnsureUtc(e.CreatedAt)))
+				.Concat(periodGaps
+					.Where(g => !g.AnalysisRunId.HasValue)
+					.Select(g => EnsureUtc(g.CreatedAt)))
+				.ToList();
+
+			if (activityDates.Count == 0)
+			{
+				return null;
+			}
+
+			return new AnalyticsSnapshot
+			{
+				TotalErrors = periodErrors.Count,
+				TotalKnowledgeGaps = periodGaps.Count,
+				AverageGapScore = CalculateAverageGapScore(periodGaps),
+				HighSeverityErrorsCount = periodErrors.Count(e => e.SeverityScore >= HighSeverityThreshold),
+				TopErrorTypesJson = JsonSerializer.Serialize(BuildTopErrorTypes(periodErrors)),
+				TopKnowledgeGapsJson = JsonSerializer.Serialize(BuildTopKnowledgeGaps(periodGaps)),
+				CreatedAt = activityDates.DefaultIfEmpty(DateTime.UtcNow).Max()
+			};
+		}
+
+		private async Task<List<string>> GetActivityDatesForUsersAsync(IReadOnlyCollection<string> userIds)
+		{
+			if (userIds.Count == 0)
+			{
+				return new List<string>();
+			}
+
+			var analysisRuns = await _context.AnalysisRuns
+				.AsNoTracking()
+				.Where(r => userIds.Contains(r.UserId) && r.CompletedAt.HasValue)
+				.ToListAsync();
+
+			return analysisRuns
+				.Select(r => EnsureUtc(r.CompletedAt!.Value))
+				.Select(FormatComparisonDate)
+				.Distinct()
+				.OrderByDescending(date => date)
+				.ToList();
+		}
+
+		private static bool IsInPeriod(DateTime activityDate, DateTime? fromUtc, DateTime? toUtc)
+		{
+			return (!fromUtc.HasValue || activityDate >= fromUtc.Value) &&
+				(!toUtc.HasValue || activityDate <= toUtc.Value);
+		}
+
+		private static DateTime GetErrorActivityDate(Models.ErrorRecord error)
+		{
+			return GetAnalysisRunDate(error.AnalysisRun) ??
+				GetTaskDate(error.AlphaBeta?.Date) ??
+				GetTaskDate(error.FifteenPuzzle?.Date) ??
+				EnsureUtc(error.CreatedAt);
+		}
+
+		private static DateTime GetKnowledgeGapActivityDate(
+			Models.KnowledgeGap gap,
+			IReadOnlyDictionary<int, Models.Analysis.AnalysisRun> analysisRuns)
+		{
+			var analysisRunDate = gap.AnalysisRunId.HasValue && analysisRuns.TryGetValue(gap.AnalysisRunId.Value, out var analysisRun)
+				? GetAnalysisRunDate(analysisRun)
+				: null;
+
+			return analysisRunDate ??
+				GetTaskDate(gap.AlphaBeta?.Date) ??
+				GetTaskDate(gap.FifteenPuzzle?.Date) ??
+				EnsureUtc(gap.CreatedAt);
+		}
+
+		private static DateTime? GetAnalysisRunDate(Models.Analysis.AnalysisRun? analysisRun)
+		{
+			if (analysisRun == null)
+			{
+				return null;
+			}
+
+			return GetTaskDate(analysisRun.CompletedAt) ??
+				GetTaskDate(analysisRun.StartedAt);
+		}
+
+		private static DateTime GetAnalysisRunActivityDate(Models.Analysis.AnalysisRun analysisRun)
+		{
+			return GetAnalysisRunDate(analysisRun) ?? EnsureUtc(analysisRun.StartedAt);
+		}
+
+		private static DateTime? GetTaskDate(DateTime? date)
+		{
+			return date.HasValue && date.Value != default
+				? EnsureUtc(date.Value)
+				: null;
+		}
+
+		private static DateTime EnsureUtc(DateTime date)
+		{
+			return date.Kind == DateTimeKind.Utc
+				? date
+				: DateTime.SpecifyKind(date, DateTimeKind.Utc);
+		}
+
+		private static string FormatComparisonDate(DateTime date)
+		{
+			return EnsureUtc(date)
+				.AddHours(ComparisonTimeOffsetHours)
+				.ToString("yyyy-MM-dd");
 		}
 
 		private async Task<List<Models.ErrorRecord>> LoadErrorsForUsersAsync(IReadOnlyCollection<string> userIds)
 		{
 			return await _context.ErrorRecords
 				.AsNoTracking()
+				.Include(e => e.AnalysisRun)
 				.Include(e => e.ErrorType)
 				.Include(e => e.AlphaBeta)
 				.Include(e => e.FifteenPuzzle)
 				.Where(e =>
+					(e.AnalysisRun != null && userIds.Contains(e.AnalysisRun.UserId)) ||
 					(e.AlphaBeta != null && userIds.Contains(e.AlphaBeta.UserId)) ||
 					(e.FifteenPuzzle != null && userIds.Contains(e.FifteenPuzzle.UserId)))
 				.ToListAsync();
+		}
+
+		private async Task<(List<Models.ErrorRecord> Errors, List<Models.KnowledgeGap> Gaps)> ApplyAnalyticsFiltersAsync(
+			List<Models.ErrorRecord> errors,
+			List<Models.KnowledgeGap> gaps,
+			AnalyticsFilterDTO? filters)
+		{
+			var excludedErrorTypeIds = await BuildExcludedErrorTypeIdsAsync(filters);
+			var excludedErrorTypeCodes = await BuildExcludedErrorTypeCodesAsync(excludedErrorTypeIds);
+			var excludedKnowledgeAspectIds = NormalizeIds(filters?.ExcludedKnowledgeAspectIds);
+
+			var filteredErrors = excludedErrorTypeIds.Count == 0 && excludedErrorTypeCodes.Count == 0
+				? errors
+				: errors
+					.Where(error => !ShouldExcludeError(error, excludedErrorTypeIds, excludedErrorTypeCodes))
+					.ToList();
+			var filteredGaps = excludedKnowledgeAspectIds.Count == 0
+				? gaps
+				: gaps
+					.Where(gap => !excludedKnowledgeAspectIds.Contains(gap.KnowledgeAspectId))
+					.ToList();
+
+			return (filteredErrors, filteredGaps);
+		}
+
+		private static bool ShouldExcludeError(
+			Models.ErrorRecord error,
+			HashSet<int> excludedErrorTypeIds,
+			HashSet<string> excludedErrorTypeCodes)
+		{
+			return (error.ErrorTypeId.HasValue && excludedErrorTypeIds.Contains(error.ErrorTypeId.Value)) ||
+				(!string.IsNullOrWhiteSpace(error.Code) && excludedErrorTypeCodes.Contains(error.Code));
+		}
+
+		private async Task<HashSet<int>> BuildExcludedErrorTypeIdsAsync(AnalyticsFilterDTO? filters)
+		{
+			var excludedErrorTypeIds = NormalizeIds(filters?.ExcludedErrorTypeIds);
+			var excludedKnowledgeAspectIds = NormalizeIds(filters?.ExcludedKnowledgeAspectIds);
+
+			if (excludedKnowledgeAspectIds.Count == 0)
+			{
+				return excludedErrorTypeIds;
+			}
+
+			var linkedErrorTypeIds = await _context.ErrorTypeAspects
+				.AsNoTracking()
+				.Where(link => excludedKnowledgeAspectIds.Contains(link.KnowledgeAspectId))
+				.Select(link => link.ErrorTypeId)
+				.ToListAsync();
+
+			foreach (var errorTypeId in linkedErrorTypeIds)
+			{
+				excludedErrorTypeIds.Add(errorTypeId);
+			}
+
+			return excludedErrorTypeIds;
+		}
+
+		private async Task<HashSet<string>> BuildExcludedErrorTypeCodesAsync(HashSet<int> excludedErrorTypeIds)
+		{
+			if (excludedErrorTypeIds.Count == 0)
+			{
+				return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			}
+
+			var codes = await _context.ErrorTypes
+				.AsNoTracking()
+				.Where(errorType => excludedErrorTypeIds.Contains(errorType.Id))
+				.Select(errorType => errorType.Code)
+				.ToListAsync();
+
+			return codes
+				.Where(code => !string.IsNullOrWhiteSpace(code))
+				.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		}
+
+		private static HashSet<int> NormalizeIds(IEnumerable<int>? ids)
+		{
+			return ids?
+				.Where(id => id > 0)
+				.ToHashSet() ?? new HashSet<int>();
+		}
+
+		private static bool HasActiveFilters(AnalyticsFilterDTO? filters)
+		{
+			return NormalizeIds(filters?.ExcludedErrorTypeIds).Count > 0 ||
+				NormalizeIds(filters?.ExcludedKnowledgeAspectIds).Count > 0;
 		}
 
 		private async Task<List<Models.KnowledgeGap>> LoadKnowledgeGapsForUsersAsync(IReadOnlyCollection<string> userIds)
@@ -439,8 +818,45 @@ namespace AICourseTester.Services
 			return await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
+				.Include(g => g.AlphaBeta)
+				.Include(g => g.FifteenPuzzle)
 				.Where(g => userIds.Contains(g.UserId))
 				.ToListAsync();
+		}
+
+		private static StudentGroupStatisticsDTO BuildStudentGroupStatistics(
+			string userId,
+			string? userName,
+			string? fullName,
+			IEnumerable<Models.ErrorRecord> groupErrors,
+			IEnumerable<Models.KnowledgeGap> groupGaps)
+		{
+			var studentErrors = groupErrors
+				.Where(error => ErrorBelongsToUser(error, userId))
+				.ToList();
+			var studentGaps = groupGaps
+				.Where(gap => gap.UserId == userId)
+				.ToList();
+
+			return new StudentGroupStatisticsDTO
+			{
+				UserId = userId,
+				UserName = userName,
+				FullName = fullName,
+				TotalErrors = studentErrors.Count,
+				TotalKnowledgeGaps = studentGaps.Count,
+				AverageGapScore = CalculateAverageGapScore(studentGaps),
+				HighSeverityErrorsCount = studentErrors.Count(e => e.SeverityScore >= HighSeverityThreshold),
+				TopErrorTypes = BuildTopErrorTypes(studentErrors),
+				TopKnowledgeGaps = BuildTopKnowledgeGaps(studentGaps)
+			};
+		}
+
+		private static bool ErrorBelongsToUser(Models.ErrorRecord error, string userId)
+		{
+			return error.AnalysisRun?.UserId == userId ||
+				error.AlphaBeta?.UserId == userId ||
+				error.FifteenPuzzle?.UserId == userId;
 		}
 
 		private static List<TopErrorTypeDTO> BuildTopErrorTypes(IEnumerable<Models.ErrorRecord> errors)

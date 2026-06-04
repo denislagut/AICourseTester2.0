@@ -88,6 +88,7 @@
 
 .metric-card,
 .panel,
+.student-stat-card,
 .recommendation-item,
 .gap-row {
     border: 1px solid #DEDEDE;
@@ -124,6 +125,10 @@
     min-height: 132px;
 }
 
+.panel--wide {
+    grid-column: 1 / -1;
+}
+
 .panel h3 {
     font-size: clamp(18px, 3vw, 24px);
     font-weight: 500;
@@ -155,6 +160,88 @@
     overflow-wrap: anywhere;
 }
 
+.filters-panel {
+    border: 1px solid #DEDEDE;
+    border-radius: 10px;
+    background: #FFFFFF;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.filter-list-card h3 {
+    font-size: clamp(16px, 2.4vw, 20px);
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.filter-checkbox-list {
+    border: 1px solid #E8E8E8;
+    border-radius: 8px;
+    background: #FAFAFA;
+    padding: 10px;
+    max-height: 240px;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.filter-checkbox-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: clamp(14px, 2vw, 16px);
+}
+
+.filter-checkbox-item input {
+    margin-top: 4px;
+}
+
+.filter-checkbox-item strong,
+.filter-checkbox-item small {
+    display: block;
+}
+
+.filter-checkbox-item small {
+    color: #666666;
+    line-height: 1.3;
+}
+
+.filter-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.filter-actions button {
+    min-height: clamp(30px, 5vw, 40px);
+    padding: 0 16px;
+    border-radius: 20px;
+    border: none;
+    background: #212529;
+    color: #FFFFFF;
+    font-size: clamp(14px, 2vw, 18px);
+    cursor: pointer;
+}
+
+.filter-actions .button-secondary {
+    background: #FFFFFF;
+    color: #212529;
+    border: 1px solid #7F7C7C;
+}
+
+.active-filters-summary {
+    grid-column: 1 / -1;
+    color: #555555;
+    font-size: clamp(14px, 2vw, 18px);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
 .gap-list,
 .recommendation-list {
     display: flex;
@@ -178,6 +265,105 @@
 .recommendation-item__meta {
     color: #555555;
     font-size: clamp(13px, 1.6vw, 16px);
+    line-height: 1.35;
+}
+
+.student-stat-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.student-stat-card {
+    padding: 12px;
+}
+
+.student-stat-card__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.student-stat-card__header h4 {
+    font-size: clamp(16px, 2.4vw, 20px);
+    font-weight: 600;
+    margin: 0 0 4px;
+}
+
+.student-stat-card__header span {
+    color: #666666;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+
+.student-stat-card__metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.student-stat-card__metrics div {
+    border: 1px solid #E8E8E8;
+    border-radius: 8px;
+    padding: 8px;
+    background: #FAFAFA;
+}
+
+.student-stat-card__metrics span {
+    display: block;
+    color: #555555;
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+.student-stat-card__metrics strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 18px;
+}
+
+.student-stat-details {
+    margin-top: 10px;
+}
+
+.student-stat-details summary {
+    cursor: pointer;
+    color: #1D4ED8;
+    font-weight: 600;
+}
+
+.student-stat-details__content {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.student-stat-details__content h5 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.student-stat-mini-list {
+    display: grid;
+    gap: 8px;
+}
+
+.student-stat-mini-list div {
+    border-bottom: 1px solid #E8E8E8;
+    padding-bottom: 7px;
+}
+
+.student-stat-mini-list strong,
+.student-stat-mini-list span {
+    display: block;
+}
+
+.student-stat-mini-list span {
+    color: #555555;
+    font-size: 13px;
     line-height: 1.35;
 }
 
@@ -787,8 +973,16 @@
         grid-template-columns: 1fr;
     }
 
+    .filters-panel {
+        grid-template-columns: 1fr;
+    }
+
     .report-metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .student-stat-list {
+        grid-template-columns: 1fr;
     }
 
     .report-problem-list {
@@ -837,6 +1031,11 @@
     }
 
     .report-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .student-stat-card__metrics,
+    .student-stat-details__content {
         grid-template-columns: 1fr;
     }
 

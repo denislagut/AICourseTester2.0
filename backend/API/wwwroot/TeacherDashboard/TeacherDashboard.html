@@ -46,6 +46,32 @@
 
         <section class="dashboard-section">
             <div class="section-heading">
+                <h2>Фильтры аналитики и отчётов</h2>
+                <span id="filters-status" class="status-text"></span>
+            </div>
+            <div class="filters-panel">
+                <div class="filter-list-card">
+                    <h3>Исключить типы ошибок</h3>
+                    <div id="error-type-filter-list" class="filter-checkbox-list">
+                        <span class="empty-state">Загрузка типов ошибок...</span>
+                    </div>
+                </div>
+                <div class="filter-list-card">
+                    <h3>Исключить аспекты знаний</h3>
+                    <div id="knowledge-aspect-filter-list" class="filter-checkbox-list">
+                        <span class="empty-state">Загрузка аспектов знаний...</span>
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button id="apply-filters-button" type="button">Применить фильтр</button>
+                    <button id="reset-filters-button" type="button" class="button-secondary">Сбросить фильтр</button>
+                </div>
+                <div id="active-filters-summary" class="active-filters-summary">Фильтры не выбраны.</div>
+            </div>
+        </section>
+
+        <section class="dashboard-section">
+            <div class="section-heading">
                 <h2>Аналитика студента</h2>
                 <form id="student-form" class="lookup-form">
                     <select id="student-group-select" aria-label="Группа">

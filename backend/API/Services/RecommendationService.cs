@@ -15,7 +15,7 @@ namespace AICourseTester.Services
 			_context = context;
 		}
 
-		public async Task<List<RecommendationDTO>?> GetStudentRecommendationsAsync(string userId)
+		public async Task<List<RecommendationDTO>?> GetStudentRecommendationsAsync(string userId, AnalyticsFilterDTO? filters = null)
 		{
 			var studentExists = await _context.Users
 				.AsNoTracking()
@@ -27,6 +27,7 @@ namespace AICourseTester.Services
 			}
 
 			var gaps = await LoadKnowledgeGapsForUsersAsync(new[] { userId });
+			gaps = await ApplyRecommendationFiltersAsync(gaps, filters);
 			var aspects = await LoadKnowledgeAspectsAsync(gaps);
 
 			var recommendations = gaps
@@ -48,12 +49,15 @@ namespace AICourseTester.Services
 				.ThenByDescending(r => r.GapScore)
 				.ToList();
 
-			await SaveStudentRecommendationsAsync(userId, recommendations);
+			if (!HasActiveFilters(filters))
+			{
+				await SaveStudentRecommendationsAsync(userId, recommendations);
+			}
 
 			return recommendations;
 		}
 
-		public async Task<List<RecommendationDTO>?> GetGroupRecommendationsAsync(int groupId)
+		public async Task<List<RecommendationDTO>?> GetGroupRecommendationsAsync(int groupId, AnalyticsFilterDTO? filters = null)
 		{
 			var groupExists = await _context.Groups
 				.AsNoTracking()
@@ -72,11 +76,16 @@ namespace AICourseTester.Services
 
 			if (userIds.Count == 0)
 			{
-				await SaveGroupRecommendationsAsync(groupId, new List<RecommendationDTO>());
+				if (!HasActiveFilters(filters))
+				{
+					await SaveGroupRecommendationsAsync(groupId, new List<RecommendationDTO>());
+				}
+
 				return new List<RecommendationDTO>();
 			}
 
 			var gaps = await LoadKnowledgeGapsForUsersAsync(userIds);
+			gaps = await ApplyRecommendationFiltersAsync(gaps, filters);
 			var aspects = await LoadKnowledgeAspectsAsync(gaps);
 
 			var recommendations = gaps
@@ -104,7 +113,10 @@ namespace AICourseTester.Services
 				.ThenByDescending(r => r.GapScore)
 				.ToList();
 
-			await SaveGroupRecommendationsAsync(groupId, recommendations);
+			if (!HasActiveFilters(filters))
+			{
+				await SaveGroupRecommendationsAsync(groupId, recommendations);
+			}
 
 			return recommendations;
 		}
@@ -256,6 +268,59 @@ namespace AICourseTester.Services
 					(g.AlphaBeta != null && userIds.Contains(g.AlphaBeta.UserId)) ||
 					(g.FifteenPuzzle != null && userIds.Contains(g.FifteenPuzzle.UserId)))
 				.ToListAsync();
+		}
+
+		private async Task<List<KnowledgeGap>> ApplyRecommendationFiltersAsync(
+			List<KnowledgeGap> gaps,
+			AnalyticsFilterDTO? filters)
+		{
+			var excludedAspectIds = await BuildExcludedKnowledgeAspectIdsAsync(filters);
+
+			if (excludedAspectIds.Count == 0)
+			{
+				return gaps;
+			}
+
+			return gaps
+				.Where(gap => !excludedAspectIds.Contains(gap.KnowledgeAspectId))
+				.ToList();
+		}
+
+		private async Task<HashSet<int>> BuildExcludedKnowledgeAspectIdsAsync(AnalyticsFilterDTO? filters)
+		{
+			var excludedAspectIds = NormalizeIds(filters?.ExcludedKnowledgeAspectIds);
+			var excludedErrorTypeIds = NormalizeIds(filters?.ExcludedErrorTypeIds);
+
+			if (excludedErrorTypeIds.Count == 0)
+			{
+				return excludedAspectIds;
+			}
+
+			var linkedAspectIds = await _context.ErrorTypeAspects
+				.AsNoTracking()
+				.Where(link => excludedErrorTypeIds.Contains(link.ErrorTypeId))
+				.Select(link => link.KnowledgeAspectId)
+				.ToListAsync();
+
+			foreach (var aspectId in linkedAspectIds)
+			{
+				excludedAspectIds.Add(aspectId);
+			}
+
+			return excludedAspectIds;
+		}
+
+		private static bool HasActiveFilters(AnalyticsFilterDTO? filters)
+		{
+			return NormalizeIds(filters?.ExcludedErrorTypeIds).Count > 0 ||
+				NormalizeIds(filters?.ExcludedKnowledgeAspectIds).Count > 0;
+		}
+
+		private static HashSet<int> NormalizeIds(IEnumerable<int>? ids)
+		{
+			return ids?
+				.Where(id => id > 0)
+				.ToHashSet() ?? new HashSet<int>();
 		}
 
 		private async Task<Dictionary<int, KnowledgeAspect>> LoadKnowledgeAspectsAsync(IEnumerable<KnowledgeGap> gaps)

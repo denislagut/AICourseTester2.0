@@ -33,7 +33,9 @@ namespace AICourseTester.Services
 
 			using var workbook = new XLWorkbook();
 			AddSummarySheet(workbook, data);
+			AddFiltersSheet(workbook, data);
 			AddStatisticsSheet(workbook, data);
+			AddStudentsStatisticsSheet(workbook, data);
 			AddKnowledgeDistributionSheet(workbook, data);
 			AddProblemsSheet(workbook, data);
 			AddErrorTypesSheet(workbook, data);
@@ -81,8 +83,10 @@ namespace AICourseTester.Services
 							column.Spacing(12);
 
 							AddPdfCard(column, "Краткий вывод", data.Conclusion);
+							AddPdfFiltersBlock(column, data);
 							AddPdfRiskBlock(column, data.RiskLevel);
 							AddPdfStatisticsBlock(column, data);
+							AddPdfStudentsStatisticsBlock(column, data);
 							AddPdfKnowledgeDistributionBlock(column, data);
 							AddPdfProblemsBlock(column, data);
 							AddPdfErrorTypesBlock(column, data);
@@ -123,6 +127,21 @@ namespace AICourseTester.Services
 			});
 		}
 
+		private static void AddFiltersSheet(XLWorkbook workbook, ReportExportData data)
+		{
+			if (!data.Filters.HasFilters)
+			{
+				return;
+			}
+
+			var sheet = workbook.Worksheets.Add("Примененные фильтры");
+			AddKeyValueRows(sheet, new[]
+			{
+				("Исключенные типы ошибок", JoinIds(data.Filters.ExcludedErrorTypeIds)),
+				("Исключенные аспекты знаний", JoinIds(data.Filters.ExcludedKnowledgeAspectIds))
+			});
+		}
+
 		private static void AddStatisticsSheet(XLWorkbook workbook, ReportExportData data)
 		{
 			var sheet = workbook.Worksheets.Add("Статистика");
@@ -133,6 +152,42 @@ namespace AICourseTester.Services
 				("Средний уровень пробелов", data.AverageGapScore.ToString("0.##")),
 				("Количество критических ошибок", data.HighSeverityErrorsCount.ToString())
 			});
+		}
+
+		private static void AddStudentsStatisticsSheet(XLWorkbook workbook, ReportExportData data)
+		{
+			if (data.StudentsStatistics.Count == 0)
+			{
+				return;
+			}
+
+			var sheet = workbook.Worksheets.Add("Студенты группы");
+			AddHeader(
+				sheet,
+				"Студент",
+				"UserId",
+				"Ошибки",
+				"Пробелы знаний",
+				"Средний показатель проблемности",
+				"Ошибки высокой серьезности",
+				"Основные проблемные темы",
+				"Основные типы ошибок");
+
+			var row = 2;
+			foreach (var student in data.StudentsStatistics)
+			{
+				sheet.Cell(row, 1).Value = student.DisplayName;
+				sheet.Cell(row, 2).Value = student.UserId;
+				sheet.Cell(row, 3).Value = student.TotalErrors;
+				sheet.Cell(row, 4).Value = student.TotalKnowledgeGaps;
+				sheet.Cell(row, 5).Value = student.AverageGapScore;
+				sheet.Cell(row, 6).Value = student.HighSeverityErrorsCount;
+				sheet.Cell(row, 7).Value = JoinKnowledgeGaps(student.TopKnowledgeGaps);
+				sheet.Cell(row, 8).Value = JoinErrorTypes(student.TopErrorTypes);
+				row++;
+			}
+
+			FormatTable(sheet);
 		}
 
 		private static void AddKnowledgeDistributionSheet(XLWorkbook workbook, ReportExportData data)
@@ -297,6 +352,20 @@ namespace AICourseTester.Services
 				});
 		}
 
+		private static void AddPdfFiltersBlock(ColumnDescriptor column, ReportExportData data)
+		{
+			if (!data.Filters.HasFilters)
+			{
+				return;
+			}
+
+			AddPdfSection(column, "Примененные фильтры", c =>
+			{
+				c.Item().Text($"Исключенные типы ошибок: {JoinIds(data.Filters.ExcludedErrorTypeIds)}");
+				c.Item().Text($"Исключенные аспекты знаний: {JoinIds(data.Filters.ExcludedKnowledgeAspectIds)}");
+			});
+		}
+
 		private static void AddPdfStatisticsBlock(ColumnDescriptor column, ReportExportData data)
 		{
 			AddPdfSection(column, "Общая статистика", c =>
@@ -316,6 +385,60 @@ namespace AICourseTester.Services
 					AddMetricCell(table, "Средний уровень пробелов", $"{data.AverageGapScore:0.##}%");
 					AddMetricCell(table, "Критические ошибки", data.HighSeverityErrorsCount.ToString());
 				});
+			});
+		}
+
+		private static void AddPdfStudentsStatisticsBlock(ColumnDescriptor column, ReportExportData data)
+		{
+			if (data.StudentsStatistics.Count == 0)
+			{
+				return;
+			}
+
+			AddPdfSection(column, "Статистика студентов группы", c =>
+			{
+				c.Item().Table(table =>
+				{
+					table.ColumnsDefinition(columns =>
+					{
+						columns.RelativeColumn(2);
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+					});
+
+					AddPdfTableHeaderCell(table, "Студент");
+					AddPdfTableHeaderCell(table, "Ошибки");
+					AddPdfTableHeaderCell(table, "Пробелы");
+					AddPdfTableHeaderCell(table, "Средний показатель");
+					AddPdfTableHeaderCell(table, "Серьезные ошибки");
+
+					foreach (var student in data.StudentsStatistics)
+					{
+						AddPdfTableCell(table, student.DisplayName);
+						AddPdfTableCell(table, student.TotalErrors.ToString());
+						AddPdfTableCell(table, student.TotalKnowledgeGaps.ToString());
+						AddPdfTableCell(table, $"{student.AverageGapScore:0.##}%");
+						AddPdfTableCell(table, student.HighSeverityErrorsCount.ToString());
+					}
+				});
+
+				foreach (var student in data.StudentsStatistics)
+				{
+					var gaps = JoinKnowledgeGaps(student.TopKnowledgeGaps);
+					var errors = JoinErrorTypes(student.TopErrorTypes);
+
+					if (!string.IsNullOrWhiteSpace(gaps))
+					{
+						c.Item().Text($"{student.DisplayName}. Проблемные темы: {gaps}").FontSize(9);
+					}
+
+					if (!string.IsNullOrWhiteSpace(errors))
+					{
+						c.Item().Text($"{student.DisplayName}. Типы ошибок: {errors}").FontSize(9);
+					}
+				}
 			});
 		}
 
@@ -448,6 +571,28 @@ namespace AICourseTester.Services
 				});
 		}
 
+		private static void AddPdfTableHeaderCell(TableDescriptor table, string text)
+		{
+			table.Cell()
+				.Border(1)
+				.BorderColor(Colors.Grey.Lighten2)
+				.Background(Colors.Grey.Lighten4)
+				.Padding(5)
+				.Text(text)
+				.FontSize(9)
+				.Bold();
+		}
+
+		private static void AddPdfTableCell(TableDescriptor table, string text)
+		{
+			table.Cell()
+				.Border(1)
+				.BorderColor(Colors.Grey.Lighten2)
+				.Padding(5)
+				.Text(string.IsNullOrWhiteSpace(text) ? "-" : text)
+				.FontSize(9);
+		}
+
 		private static void AddPdfProgressBar(ColumnDescriptor column, double percent, string color)
 		{
 			var safePercent = Math.Clamp(percent, 0, 100);
@@ -484,12 +629,14 @@ namespace AICourseTester.Services
 				Conclusion = GetString(summaryRoot, "conclusion", "Conclusion", ""),
 				RecommendationsCount = GetInt(summaryRoot, "recommendationsCount", "RecommendationsCount", 0),
 				TeacherActions = GetStringArray(summaryRoot, "teacherActions", "TeacherActions"),
+				Filters = GetReportFilters(summaryRoot),
 				KnowledgeGaps = knowledgeGaps,
 				TotalErrors = GetInt(analyticsRoot, "TotalErrors", "totalErrors", 0),
 				TotalKnowledgeGaps = GetInt(analyticsRoot, "TotalKnowledgeGaps", "totalKnowledgeGaps", 0),
 				AverageGapScore = GetDouble(analyticsRoot, "AverageGapScore", "averageGapScore", 0),
 				HighSeverityErrorsCount = GetInt(analyticsRoot, "HighSeverityErrorsCount", "highSeverityErrorsCount", 0),
 				ErrorTypes = GetErrorTypes(analyticsRoot),
+				StudentsStatistics = GetStudentsStatistics(analyticsRoot),
 				Recommendations = GetRecommendations(recommendations.RootElement)
 			};
 		}
@@ -583,6 +730,102 @@ namespace AICourseTester.Services
 				.ToList();
 		}
 
+		private static List<StudentStatisticsExportItem> GetStudentsStatistics(JsonElement analytics)
+		{
+			if (!TryGetProperty(analytics, out var students, "StudentsStatistics", "studentsStatistics") ||
+				students.ValueKind != JsonValueKind.Array)
+			{
+				return new List<StudentStatisticsExportItem>();
+			}
+
+			return students.EnumerateArray()
+				.Select(item => new StudentStatisticsExportItem
+				{
+					UserId = GetString(item, "UserId", "userId", ""),
+					UserName = GetString(item, "UserName", "userName", ""),
+					FullName = GetString(item, "FullName", "fullName", ""),
+					TotalErrors = GetInt(item, "TotalErrors", "totalErrors", 0),
+					TotalKnowledgeGaps = GetInt(item, "TotalKnowledgeGaps", "totalKnowledgeGaps", 0),
+					AverageGapScore = GetDouble(item, "AverageGapScore", "averageGapScore", 0),
+					HighSeverityErrorsCount = GetInt(item, "HighSeverityErrorsCount", "highSeverityErrorsCount", 0),
+					TopKnowledgeGaps = GetStudentKnowledgeGaps(item),
+					TopErrorTypes = GetStudentErrorTypes(item)
+				})
+				.ToList();
+		}
+
+		private static List<ProblemExportItem> GetStudentKnowledgeGaps(JsonElement student)
+		{
+			if (!TryGetProperty(student, out var gaps, "TopKnowledgeGaps", "topKnowledgeGaps") ||
+				gaps.ValueKind != JsonValueKind.Array)
+			{
+				return new List<ProblemExportItem>();
+			}
+
+			return gaps.EnumerateArray()
+				.Select(item =>
+				{
+					var score = GetDouble(item, "AverageGapScore", "averageGapScore", GetDouble(item, "MaxGapScore", "maxGapScore", 0));
+
+					return new ProblemExportItem
+					{
+						AspectName = GetString(item, "AspectName", "aspectName", "Аспект не указан"),
+						TopicName = GetString(item, "TopicName", "topicName", "не указана"),
+						Score = score,
+						Level = GetLevel(score)
+					};
+				})
+				.ToList();
+		}
+
+		private static List<ErrorTypeExportItem> GetStudentErrorTypes(JsonElement student)
+		{
+			if (!TryGetProperty(student, out var errors, "TopErrorTypes", "topErrorTypes") ||
+				errors.ValueKind != JsonValueKind.Array)
+			{
+				return new List<ErrorTypeExportItem>();
+			}
+
+			return errors.EnumerateArray()
+				.Select(item => new ErrorTypeExportItem
+				{
+					Name = GetString(item, "Name", "name", GetString(item, "Code", "code", "Ошибка")),
+					Count = GetInt(item, "Count", "count", 0),
+					AverageSeverity = GetDouble(item, "AverageSeverity", "averageSeverity", 0)
+				})
+				.ToList();
+		}
+
+		private static ReportFiltersExportItem GetReportFilters(JsonElement summary)
+		{
+			if (!TryGetProperty(summary, out var filters, "filters", "Filters") ||
+				filters.ValueKind != JsonValueKind.Object)
+			{
+				return new ReportFiltersExportItem();
+			}
+
+			return new ReportFiltersExportItem
+			{
+				ExcludedErrorTypeIds = GetIntArray(filters, "excludedErrorTypeIds", "ExcludedErrorTypeIds"),
+				ExcludedKnowledgeAspectIds = GetIntArray(filters, "excludedKnowledgeAspectIds", "ExcludedKnowledgeAspectIds")
+			};
+		}
+
+		private static List<int> GetIntArray(JsonElement element, params string[] names)
+		{
+			if (!TryGetProperty(element, out var array, names) || array.ValueKind != JsonValueKind.Array)
+			{
+				return new List<int>();
+			}
+
+			return array.EnumerateArray()
+				.Where(item => item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out _))
+				.Select(item => item.GetInt32())
+				.Where(id => id > 0)
+				.Distinct()
+				.ToList();
+		}
+
 		private static List<string> GetStringArray(JsonElement element, params string[] names)
 		{
 			if (!TryGetProperty(element, out var array, names) || array.ValueKind != JsonValueKind.Array)
@@ -595,6 +838,29 @@ namespace AICourseTester.Services
 				.Select(item => item.GetString() ?? "")
 				.Where(value => !string.IsNullOrWhiteSpace(value))
 				.ToList();
+		}
+
+		private static string JoinKnowledgeGaps(List<ProblemExportItem> gaps)
+		{
+			return string.Join("; ", gaps
+				.Take(5)
+				.Select(gap => $"{gap.AspectName} ({gap.Score:0.##}%)")
+				.Where(value => !string.IsNullOrWhiteSpace(value)));
+		}
+
+		private static string JoinErrorTypes(List<ErrorTypeExportItem> errors)
+		{
+			return string.Join("; ", errors
+				.Take(5)
+				.Select(error => $"{error.Name} ({error.Count})")
+				.Where(value => !string.IsNullOrWhiteSpace(value)));
+		}
+
+		private static string JoinIds(List<int> ids)
+		{
+			return ids.Count == 0
+				? "не выбраны"
+				: string.Join(", ", ids.OrderBy(id => id));
 		}
 
 		private static string GetString(JsonElement element, string name1, string name2, string defaultValue)
@@ -741,9 +1007,11 @@ namespace AICourseTester.Services
 			public double AverageGapScore { get; set; }
 			public int HighSeverityErrorsCount { get; set; }
 			public List<string> TeacherActions { get; set; } = new();
+			public ReportFiltersExportItem Filters { get; set; } = new();
 			public List<ProblemExportItem> KnowledgeGaps { get; set; } = new();
 			public List<ErrorTypeExportItem> ErrorTypes { get; set; } = new();
 			public List<RecommendationExportItem> Recommendations { get; set; } = new();
+			public List<StudentStatisticsExportItem> StudentsStatistics { get; set; } = new();
 			public List<KnowledgeDistributionItem> KnowledgeDistribution
 			{
 				get
@@ -769,6 +1037,31 @@ namespace AICourseTester.Services
 			public string TopicName { get; set; } = "";
 			public double Score { get; set; }
 			public string Level { get; set; } = "";
+		}
+
+		private class ReportFiltersExportItem
+		{
+			public List<int> ExcludedErrorTypeIds { get; set; } = new();
+			public List<int> ExcludedKnowledgeAspectIds { get; set; } = new();
+			public bool HasFilters => ExcludedErrorTypeIds.Count > 0 || ExcludedKnowledgeAspectIds.Count > 0;
+		}
+
+		private class StudentStatisticsExportItem
+		{
+			public string UserId { get; set; } = "";
+			public string UserName { get; set; } = "";
+			public string FullName { get; set; } = "";
+			public int TotalErrors { get; set; }
+			public int TotalKnowledgeGaps { get; set; }
+			public double AverageGapScore { get; set; }
+			public int HighSeverityErrorsCount { get; set; }
+			public List<ProblemExportItem> TopKnowledgeGaps { get; set; } = new();
+			public List<ErrorTypeExportItem> TopErrorTypes { get; set; } = new();
+			public string DisplayName => !string.IsNullOrWhiteSpace(FullName)
+				? FullName
+				: !string.IsNullOrWhiteSpace(UserName)
+					? UserName
+					: UserId;
 		}
 
 		private class KnowledgeDistributionItem
