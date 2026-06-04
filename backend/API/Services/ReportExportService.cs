@@ -702,7 +702,30 @@ namespace AICourseTester.Services
 
 		private static string FormatDate(DateTime date)
 		{
-			return date.ToString("dd.MM.yyyy HH:mm");
+			return FormatMoscowDate(date);
+		}
+
+		private static string FormatMoscowDate(DateTime date)
+		{
+			var utcDate = date.Kind == DateTimeKind.Utc
+				? date
+				: DateTime.SpecifyKind(date, DateTimeKind.Utc);
+
+			try
+			{
+				var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Russian Standard Time");
+				return TimeZoneInfo.ConvertTimeFromUtc(utcDate, timeZone).ToString("dd.MM.yyyy HH:mm");
+			}
+			catch (TimeZoneNotFoundException)
+			{
+				var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow");
+				return TimeZoneInfo.ConvertTimeFromUtc(utcDate, timeZone).ToString("dd.MM.yyyy HH:mm");
+			}
+			catch (InvalidTimeZoneException)
+			{
+				var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow");
+				return TimeZoneInfo.ConvertTimeFromUtc(utcDate, timeZone).ToString("dd.MM.yyyy HH:mm");
+			}
 		}
 
 		private class ReportExportData

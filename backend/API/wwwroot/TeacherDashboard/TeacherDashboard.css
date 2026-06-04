@@ -38,7 +38,8 @@
     gap: 10px;
 }
 
-.lookup-form input {
+.lookup-form input,
+.lookup-form select {
     width: clamp(180px, 25vw, 320px);
     height: clamp(30px, 5vw, 40px);
     border: 1px solid #aaa;
@@ -46,6 +47,17 @@
     background: #DFDFDF;
     padding: 0 12px;
     font-size: clamp(14px, 2vw, 18px);
+}
+
+.lookup-form select,
+.report-form select {
+    cursor: pointer;
+}
+
+.lookup-form select:disabled,
+.report-form select:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 .lookup-form button {
@@ -295,6 +307,216 @@
     font-size: clamp(13px, 1.6vw, 16px);
 }
 
+.compare-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.compare-mode-switch,
+.compare-controls,
+.compare-periods {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.compare-mode-switch label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #DEDEDE;
+    border-radius: 20px;
+    background: #FFFFFF;
+    padding: 8px 14px;
+    font-size: clamp(14px, 2vw, 18px);
+    cursor: pointer;
+}
+
+.compare-controls select,
+.compare-period input {
+    height: clamp(30px, 5vw, 40px);
+    border: 1px solid #aaa;
+    border-radius: 20px;
+    background: #DFDFDF;
+    padding: 0 12px;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.compare-controls select {
+    width: clamp(220px, 28vw, 360px);
+}
+
+.compare-controls select:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.compare-form > button {
+    align-self: flex-start;
+    min-height: clamp(30px, 5vw, 40px);
+    padding: 0 18px;
+    border-radius: 20px;
+    background: #212529;
+    color: #FFFFFF;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.is-hidden {
+    display: none !important;
+}
+
+.compare-period {
+    min-width: min(100%, 420px);
+    flex: 1;
+    border: 1px solid #DEDEDE;
+    border-radius: 10px;
+    background: #FFFFFF;
+    padding: 12px;
+}
+
+.compare-period legend {
+    padding: 0 6px;
+    font-size: clamp(15px, 2vw, 18px);
+    font-weight: 600;
+}
+
+.compare-period label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+    color: #555555;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.available-dates {
+    border: 1px solid #DEDEDE;
+    border-radius: 10px;
+    background: #FFFFFF;
+    padding: 12px;
+}
+
+.available-dates h3,
+.compare-bars h3,
+.compare-card h3 {
+    font-size: clamp(16px, 2.4vw, 20px);
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.date-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.date-chip {
+    min-height: 34px;
+    border: 1px solid #7F7C7C;
+    border-radius: 20px;
+    background: #FFFFFF;
+    color: #212529;
+    padding: 0 12px;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.compare-content {
+    margin-top: 14px;
+}
+
+.compare-result {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.compare-interpretation,
+.compare-bars,
+.compare-card {
+    border: 1px solid #DEDEDE;
+    border-radius: 10px;
+    background: #FFFFFF;
+    padding: 14px;
+}
+
+.compare-interpretation {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.compare-interpretation span,
+.compare-snapshot-dates {
+    color: #555555;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.compare-interpretation strong {
+    font-size: clamp(18px, 2.6vw, 24px);
+}
+
+.compare-snapshot-dates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.compare-cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.compare-card__values {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #555555;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
+.compare-card__values strong {
+    color: #212529;
+}
+
+.compare-trend {
+    display: inline-flex;
+    margin-top: 10px;
+    border-radius: 8px;
+    padding: 3px 8px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.compare-trend--good {
+    color: #05603A;
+    background: #D1FADF;
+}
+
+.compare-trend--bad {
+    color: #8A1C12;
+    background: #FEE4E2;
+}
+
+.compare-trend--neutral {
+    color: #555555;
+    background: #F2F4F7;
+}
+
+.compare-bar-row {
+    margin-top: 10px;
+}
+
+.compare-bar-row__top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    color: #555555;
+    font-size: clamp(14px, 2vw, 18px);
+}
+
 .reports-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(280px, 1fr));
@@ -307,7 +529,8 @@
     gap: 12px;
 }
 
-.report-form input {
+.report-form input,
+.report-form select {
     width: 100%;
     height: clamp(30px, 5vw, 40px);
     border: 1px solid #aaa;
@@ -572,6 +795,10 @@
         grid-template-columns: 1fr;
     }
 
+    .compare-cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .pie-chart-layout {
         grid-template-columns: 1fr;
         justify-items: center;
@@ -590,7 +817,18 @@
     }
 
     .lookup-form button,
-    .lookup-form input {
+    .lookup-form input,
+    .lookup-form select {
+        width: 100%;
+    }
+
+    .compare-controls,
+    .compare-mode-switch {
+        flex-direction: column;
+    }
+
+    .compare-controls select,
+    .compare-form > button {
         width: 100%;
     }
 
@@ -599,6 +837,10 @@
     }
 
     .report-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .compare-cards {
         grid-template-columns: 1fr;
     }
 

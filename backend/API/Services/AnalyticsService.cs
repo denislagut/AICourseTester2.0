@@ -11,6 +11,7 @@ namespace AICourseTester.Services
 	{
 		private const double HighSeverityThreshold = 3.0;
 		private const int TopItemsLimit = 10;
+		private const int ComparisonTimeOffsetHours = 6;
 
 		private readonly MainDbContext _context;
 
@@ -322,6 +323,104 @@ namespace AICourseTester.Services
 				.ToListAsync();
 		}
 
+		public async Task<List<AnalyticsSnapshotDTO>?> GetStudentSnapshotsForPeriodAsync(
+			string userId,
+			DateTime? from,
+			DateTime? to)
+		{
+			var studentExists = await _context.Users
+				.AsNoTracking()
+				.AnyAsync(u => u.Id == userId);
+
+			if (!studentExists)
+			{
+				return null;
+			}
+
+			var query = _context.AnalyticsSnapshots
+				.AsNoTracking()
+				.Where(s => s.ScopeType == "Student" && s.UserId == userId);
+
+			query = ApplyPeriod(query, from, to);
+
+			var snapshots = await query
+				.OrderByDescending(s => s.CreatedAt)
+				.ToListAsync();
+
+			return snapshots.Select(MapSnapshot).ToList();
+		}
+
+		public async Task<List<AnalyticsSnapshotDTO>?> GetGroupSnapshotsForPeriodAsync(
+			int groupId,
+			DateTime? from,
+			DateTime? to)
+		{
+			var groupExists = await _context.Groups
+				.AsNoTracking()
+				.AnyAsync(g => g.Id == groupId);
+
+			if (!groupExists)
+			{
+				return null;
+			}
+
+			var query = _context.AnalyticsSnapshots
+				.AsNoTracking()
+				.Where(s => s.ScopeType == "Group" && s.GroupId == groupId);
+
+			query = ApplyPeriod(query, from, to);
+
+			var snapshots = await query
+				.OrderByDescending(s => s.CreatedAt)
+				.ToListAsync();
+
+			return snapshots.Select(MapSnapshot).ToList();
+		}
+
+		public async Task<AnalyticsCompareDTO?> CompareStudentPeriodsAsync(
+			string userId,
+			DateTime? beforeFrom,
+			DateTime? beforeTo,
+			DateTime? afterFrom,
+			DateTime? afterTo)
+		{
+			var studentExists = await _context.Users
+				.AsNoTracking()
+				.AnyAsync(u => u.Id == userId);
+
+			if (!studentExists)
+			{
+				return null;
+			}
+
+			var before = await GetLatestSnapshotForPeriodAsync("Student", userId, null, beforeFrom, beforeTo);
+			var after = await GetLatestSnapshotForPeriodAsync("Student", userId, null, afterFrom, afterTo);
+
+			return BuildCompareResult(before, after);
+		}
+
+		public async Task<AnalyticsCompareDTO?> CompareGroupPeriodsAsync(
+			int groupId,
+			DateTime? beforeFrom,
+			DateTime? beforeTo,
+			DateTime? afterFrom,
+			DateTime? afterTo)
+		{
+			var groupExists = await _context.Groups
+				.AsNoTracking()
+				.AnyAsync(g => g.Id == groupId);
+
+			if (!groupExists)
+			{
+				return null;
+			}
+
+			var before = await GetLatestSnapshotForPeriodAsync("Group", null, groupId, beforeFrom, beforeTo);
+			var after = await GetLatestSnapshotForPeriodAsync("Group", null, groupId, afterFrom, afterTo);
+
+			return BuildCompareResult(before, after);
+		}
+
 		private async Task<List<Models.ErrorRecord>> LoadErrorsForUsersAsync(IReadOnlyCollection<string> userIds)
 		{
 			return await _context.ErrorRecords
@@ -400,15 +499,143 @@ namespace AICourseTester.Services
 				: Math.Round(gaps.Average(g => g.GapScore), 2);
 		}
 
+		private async Task<AnalyticsSnapshot?> GetLatestSnapshotForPeriodAsync(
+			string scopeType,
+			string? userId,
+			int? groupId,
+			DateTime? from,
+			DateTime? to)
+		{
+			var query = _context.AnalyticsSnapshots
+				.AsNoTracking()
+				.Where(s => s.ScopeType == scopeType);
+
+			if (!string.IsNullOrWhiteSpace(userId))
+			{
+				query = query.Where(s => s.UserId == userId);
+			}
+
+			if (groupId.HasValue)
+			{
+				query = query.Where(s => s.GroupId == groupId);
+			}
+
+			query = ApplyPeriod(query, from, to);
+
+			return await query
+				.OrderByDescending(s => s.CreatedAt)
+				.FirstOrDefaultAsync();
+		}
+
+		private static IQueryable<AnalyticsSnapshot> ApplyPeriod(
+			IQueryable<AnalyticsSnapshot> query,
+			DateTime? from,
+			DateTime? to)
+		{
+			var (fromUtc, toUtc) = BuildUtcPeriod(from, to);
+
+			if (fromUtc.HasValue)
+			{
+				query = query.Where(s => s.CreatedAt >= fromUtc.Value);
+			}
+
+			if (toUtc.HasValue)
+			{
+				query = query.Where(s => s.CreatedAt <= toUtc.Value);
+			}
+
+			return query;
+		}
+
+		private static (DateTime? FromUtc, DateTime? ToUtc) BuildUtcPeriod(DateTime? from, DateTime? to)
+		{
+			DateTime? fromUtc = null;
+			DateTime? toUtc = null;
+
+			if (from.HasValue)
+			{
+				fromUtc = ConvertComparisonDateToUtc(from.Value.Date);
+			}
+
+			if (to.HasValue)
+			{
+				toUtc = ConvertComparisonDateToUtc(to.Value.Date.AddDays(1).AddTicks(-1));
+			}
+
+			return (fromUtc, toUtc);
+		}
+
+		private static DateTime ConvertComparisonDateToUtc(DateTime comparisonDate)
+		{
+			return DateTime.SpecifyKind(comparisonDate, DateTimeKind.Unspecified)
+				.AddHours(-ComparisonTimeOffsetHours);
+		}
+
+		private static AnalyticsCompareDTO BuildCompareResult(AnalyticsSnapshot? before, AnalyticsSnapshot? after)
+		{
+			if (before == null || after == null)
+			{
+				throw new InvalidOperationException("Недостаточно данных для сравнения выбранных периодов");
+			}
+
+			var averageGapScoreDifference = Math.Round(after.AverageGapScore - before.AverageGapScore, 2);
+
+			return new AnalyticsCompareDTO
+			{
+				Before = MapComparePeriod(before),
+				After = MapComparePeriod(after),
+				Difference = new AnalyticsCompareDifferenceDTO
+				{
+					TotalErrors = after.TotalErrors - before.TotalErrors,
+					TotalKnowledgeGaps = after.TotalKnowledgeGaps - before.TotalKnowledgeGaps,
+					AverageGapScore = averageGapScoreDifference,
+					HighSeverityErrorsCount = after.HighSeverityErrorsCount - before.HighSeverityErrorsCount
+				},
+				Interpretation = averageGapScoreDifference < 0
+					? "Показатель проблемности снизился"
+					: averageGapScoreDifference > 0
+						? "Показатель проблемности увеличился"
+						: "Существенных изменений не выявлено"
+			};
+		}
+
+		private static AnalyticsComparePeriodDTO MapComparePeriod(AnalyticsSnapshot snapshot)
+		{
+			return new AnalyticsComparePeriodDTO
+			{
+				TotalErrors = snapshot.TotalErrors,
+				TotalKnowledgeGaps = snapshot.TotalKnowledgeGaps,
+				AverageGapScore = snapshot.AverageGapScore,
+				HighSeverityErrorsCount = snapshot.HighSeverityErrorsCount,
+				CreatedAt = snapshot.CreatedAt
+			};
+		}
+
+		private static AnalyticsSnapshotDTO MapSnapshot(AnalyticsSnapshot snapshot)
+		{
+			return new AnalyticsSnapshotDTO
+			{
+				Id = snapshot.Id,
+				ScopeType = snapshot.ScopeType,
+				UserId = snapshot.UserId,
+				GroupId = snapshot.GroupId,
+				TotalStudents = snapshot.TotalStudents,
+				TotalGroups = snapshot.TotalGroups,
+				TotalErrors = snapshot.TotalErrors,
+				TotalKnowledgeGaps = snapshot.TotalKnowledgeGaps,
+				AverageGapScore = snapshot.AverageGapScore,
+				HighSeverityErrorsCount = snapshot.HighSeverityErrorsCount,
+				TopErrorTypesJson = snapshot.TopErrorTypesJson,
+				TopKnowledgeGapsJson = snapshot.TopKnowledgeGapsJson,
+				CreatedAt = snapshot.CreatedAt
+			};
+		}
+
 		private async Task SaveGlobalSnapshotAsync(
 			AnalyticsSummaryDTO summary,
 			List<TopErrorTypeDTO> topErrorTypes,
 			List<TopKnowledgeGapDTO> topKnowledgeGaps)
 		{
-			await _context.AnalyticsSnapshots
-				.Where(s => s.ScopeType == "Global")
-				.ExecuteDeleteAsync();
-
 			_context.AnalyticsSnapshots.Add(new AnalyticsSnapshot
 			{
 				ScopeType = "Global",
@@ -428,10 +655,6 @@ namespace AICourseTester.Services
 
 		private async Task SaveStudentSnapshotAsync(StudentAnalyticsDTO analytics)
 		{
-			await _context.AnalyticsSnapshots
-				.Where(s => s.ScopeType == "Student" && s.UserId == analytics.UserId)
-				.ExecuteDeleteAsync();
-
 			_context.AnalyticsSnapshots.Add(new AnalyticsSnapshot
 			{
 				ScopeType = "Student",
@@ -451,10 +674,6 @@ namespace AICourseTester.Services
 
 		private async Task SaveGroupSnapshotAsync(GroupAnalyticsDTO analytics)
 		{
-			await _context.AnalyticsSnapshots
-				.Where(s => s.ScopeType == "Group" && s.GroupId == analytics.GroupId)
-				.ExecuteDeleteAsync();
-
 			_context.AnalyticsSnapshots.Add(new AnalyticsSnapshot
 			{
 				ScopeType = "Group",

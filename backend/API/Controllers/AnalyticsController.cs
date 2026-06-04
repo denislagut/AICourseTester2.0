@@ -92,5 +92,87 @@ namespace AICourseTester.Controllers
 
 			return Ok(snapshots);
 		}
+
+		[HttpGet("Snapshots/Students/{userId}/Period")]
+		public async Task<ActionResult<List<AnalyticsSnapshotDTO>>> GetStudentSnapshotsForPeriod(
+			string userId,
+			[FromQuery] DateTime? from,
+			[FromQuery] DateTime? to)
+		{
+			var snapshots = await _analyticsService.GetStudentSnapshotsForPeriodAsync(userId, from, to);
+
+			if (snapshots == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(snapshots);
+		}
+
+		[HttpGet("Snapshots/Groups/{groupId:int}/Period")]
+		public async Task<ActionResult<List<AnalyticsSnapshotDTO>>> GetGroupSnapshotsForPeriod(
+			int groupId,
+			[FromQuery] DateTime? from,
+			[FromQuery] DateTime? to)
+		{
+			var snapshots = await _analyticsService.GetGroupSnapshotsForPeriodAsync(groupId, from, to);
+
+			if (snapshots == null)
+			{
+				return NotFound();
+			}
+
+			return Ok(snapshots);
+		}
+
+		[HttpGet("Students/{userId}/Compare")]
+		public async Task<ActionResult<AnalyticsCompareDTO>> CompareStudentPeriods(
+			string userId,
+			[FromQuery] DateTime? beforeFrom,
+			[FromQuery] DateTime? beforeTo,
+			[FromQuery] DateTime? afterFrom,
+			[FromQuery] DateTime? afterTo)
+		{
+			try
+			{
+				var comparison = await _analyticsService.CompareStudentPeriodsAsync(userId, beforeFrom, beforeTo, afterFrom, afterTo);
+
+				if (comparison == null)
+				{
+					return NotFound();
+				}
+
+				return Ok(comparison);
+			}
+			catch (InvalidOperationException exception)
+			{
+				return BadRequest(exception.Message);
+			}
+		}
+
+		[HttpGet("Groups/{groupId:int}/Compare")]
+		public async Task<ActionResult<AnalyticsCompareDTO>> CompareGroupPeriods(
+			int groupId,
+			[FromQuery] DateTime? beforeFrom,
+			[FromQuery] DateTime? beforeTo,
+			[FromQuery] DateTime? afterFrom,
+			[FromQuery] DateTime? afterTo)
+		{
+			try
+			{
+				var comparison = await _analyticsService.CompareGroupPeriodsAsync(groupId, beforeFrom, beforeTo, afterFrom, afterTo);
+
+				if (comparison == null)
+				{
+					return NotFound();
+				}
+
+				return Ok(comparison);
+			}
+			catch (InvalidOperationException exception)
+			{
+				return BadRequest(exception.Message);
+			}
+		}
 	}
 }
