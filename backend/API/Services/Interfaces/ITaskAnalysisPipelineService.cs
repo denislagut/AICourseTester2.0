@@ -6,6 +6,11 @@ namespace AICourseTester.Services.Interfaces
 {
 	public interface ITaskAnalysisPipelineService
 	{
+		Task<ITaskAnalysisResult> AnalyzeAsync(
+		string taskType,
+		int taskId,
+		string userId);
+
 		Task<ITaskAnalysisResult> AnalyzeFifteenPuzzleAsync(
 			int fifteenPuzzleId,
 			string userId,

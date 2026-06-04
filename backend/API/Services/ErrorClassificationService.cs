@@ -36,9 +36,7 @@ namespace AICourseTester.Services
 				   code == ErrorCodes.PathIncomplete ||
 				   code == ErrorCodes.PathRedundant ||
 				   code == ErrorCodes.PathMissing ||
-				   code == ErrorCodes.ValueCorrectPathWrong ||
-				   code == ErrorCodes.PathNotMaximizingRootValue ||
-				   code == ErrorCodes.ValuesAndPruningCorrectPathWrong;
+				   code == ErrorCodes.PathNotMaximizingRootValue;
 		}
 
 		private static bool IsPruningError(string code)
@@ -49,11 +47,7 @@ namespace AICourseTester.Services
 				   code == ErrorCodes.PathThroughPrunedBranch ||
 				   code == ErrorCodes.EarlyPruningError ||
 				   code == ErrorCodes.MissedPruningError ||
-				   code == ErrorCodes.ValueAffectedByWrongPruning ||
-				   code == ErrorCodes.ValuesCorrectPruningWrong ||
-				   code == ErrorCodes.PruningCorrectResultWrongReason ||
-				   code == ErrorCodes.PruningPathInconsistency ||
-				   code == ErrorCodes.ValuePruningInconsistency;
+				   code == ErrorCodes.ValueAffectedByWrongPruning;
 		}
 
 		private static string GetErrorCategory(string code)
@@ -142,7 +136,7 @@ namespace AICourseTester.Services
 
 			if (hasPathErrors && !hasValueErrors)
 			{
-				var pathConsistencyType = errorTypes.FirstOrDefault(t => t.Code == "PATH_VALUE_CONSISTENCY_ERROR");
+				var pathConsistencyType = errorTypes.FirstOrDefault(t => t.Code == "OPTIMAL_PATH_SELECTION_ERROR");
 
 				foreach (var error in errors.Where(e =>
 					e.Code == ErrorCodes.PathStepIncorrect ||
@@ -154,15 +148,12 @@ namespace AICourseTester.Services
 				}
 			}
 
-			if (errors.Any(e =>
-				e.Code == ErrorCodes.PathThroughPrunedBranch ||
-				e.Code == ErrorCodes.PruningPathInconsistency))
+			if (errors.Any(e => e.Code == ErrorCodes.PathThroughPrunedBranch))
 			{
 				var conflictType = errorTypes.FirstOrDefault(t => t.Code == "PRUNING_PATH_CONFLICT_ERROR");
 
 				foreach (var error in errors.Where(e =>
-					e.Code == ErrorCodes.PathThroughPrunedBranch ||
-					e.Code == ErrorCodes.PruningPathInconsistency))
+					e.Code == ErrorCodes.PathThroughPrunedBranch))
 				{
 					error.ErrorTypeId = conflictType?.Id;
 				}
@@ -316,9 +307,12 @@ namespace AICourseTester.Services
 			{
 				var hasValueErrors = allErrors.Any(e => IsAlphaBetaValueError(e.Code));
 
-				if (!hasValueErrors)
+				if (error.Code == ErrorCodes.PathStepIncorrect ||
+					error.Code == ErrorCodes.PathIncomplete ||
+					error.Code == ErrorCodes.PathRedundant ||
+					error.Code == ErrorCodes.PathMissing)
 				{
-					return errorTypes.FirstOrDefault(t => t.Code == "PATH_VALUE_CONSISTENCY_ERROR");
+					return errorTypes.FirstOrDefault(t => t.Code == "OPTIMAL_PATH_SELECTION_ERROR");
 				}
 
 				return errorTypes.FirstOrDefault(t => t.Code == "OPTIMAL_PATH_SELECTION_ERROR");
@@ -331,14 +325,14 @@ namespace AICourseTester.Services
 				return errorTypes.FirstOrDefault(t => t.Code == "PRUNING_BOUNDARY_ERROR");
 			}
 
-			if (error.Code == ErrorCodes.PathThroughPrunedBranch ||
-				error.Code == ErrorCodes.PruningPathInconsistency)
+			if (error.Code == ErrorCodes.PathThroughPrunedBranch)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "PRUNING_PATH_CONFLICT_ERROR");
 			}
 
 			if (error.Code == ErrorCodes.ValuePathInconsistency ||
-				error.Code == ErrorCodes.ValuePruningInconsistency)
+				error.Code == ErrorCodes.ValuePruningInconsistency ||
+				error.Code == ErrorCodes.PruningPathInconsistency)
 			{
 				return errorTypes.FirstOrDefault(t => t.Code == "SOLUTION_CONSISTENCY_ERROR");
 			}
@@ -723,17 +717,15 @@ namespace AICourseTester.Services
 			var requiredLinks = new List<(string errorTypeCode, string aspectName, double weight)>
 			{
 				("MINIMAX_VALUE_CALCULATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
-				("MIN_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
-				("MAX_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
 
 				("OPTIMAL_PATH_SELECTION_ERROR", "Выбор оптимального хода", 1.0),
-				("PATH_VALUE_CONSISTENCY_ERROR", "Выбор оптимального хода", 1.0),
-				("PATH_VALUE_CONSISTENCY_ERROR", "Согласованность решения", 0.7),
 
 				("PRUNING_BOUNDARY_ERROR", "Понимание границ действия отсечения", 1.0),
 				("PRUNING_BOUNDARY_ERROR", "Понимание условий альфа-бета отсечения", 0.6),
 
 				("MIN_MAX_ROLE_CONFUSION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
+				("MIN_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
+				("MAX_LEVEL_AGGREGATION_ERROR", "Принцип вычисления минимаксных значений", 1.0),
 
 				("EARLY_PRUNING_ERROR_TYPE", "Понимание условий альфа-бета отсечения", 1.0),
 
@@ -747,13 +739,10 @@ namespace AICourseTester.Services
 				("PRUNING_LOGIC_ERROR", "Согласованность решения", 0.5),
 
 				("PRUNING_PATH_CONFLICT_ERROR", "Понимание границ действия отсечения", 0.8),
-				("PRUNING_PATH_CONFLICT_ERROR", "Согласованность решения", 1.0),
 
 				("SOLUTION_CONSISTENCY_ERROR", "Согласованность решения", 1.0),
 
 				("MIN_MAX_ROLE_CONFUSION_ERROR", "Различение ролей MIN и MAX", 1.0),
-				("MIN_LEVEL_AGGREGATION_ERROR", "Различение ролей MIN и MAX", 0.7),
-				("MAX_LEVEL_AGGREGATION_ERROR", "Различение ролей MIN и MAX", 0.7),
 
 				("EARLY_PRUNING_ERROR_TYPE", "Определение момента отсечения", 1.0),
 				("MISSED_PRUNING_ERROR_TYPE", "Определение момента отсечения", 0.8),
@@ -761,7 +750,6 @@ namespace AICourseTester.Services
 
 				("VALUE_PRUNING_DEPENDENCY_ERROR", "Последствия неверного отсечения", 1.0),
 				("PRUNING_PATH_CONFLICT_ERROR", "Последствия неверного отсечения", 0.7),
-				("SOLUTION_CONSISTENCY_ERROR", "Последствия неверного отсечения", 0.5),
 
 				("NODE_EXPANSION_ORDER_ERROR", "Обработка равных значений f(n)", 0.5),
 				("A_STAR_SEARCH_STRATEGY_ERROR", "Обработка равных значений f(n)", 0.4),
