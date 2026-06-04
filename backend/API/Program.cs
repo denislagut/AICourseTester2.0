@@ -163,6 +163,7 @@ builder.Services.AddScoped<IFifteenPuzzleErrorAnalysisService, FifteenPuzzleErro
 builder.Services.AddScoped<IErrorClassificationService, ErrorClassificationService>();
 
 builder.Services.AddScoped<IKnowledgeGapDetectionService, KnowledgeGapDetectionService>();
+builder.Services.AddScoped<IKnowledgeGapTrendService, KnowledgeGapTrendService>();
 
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 
