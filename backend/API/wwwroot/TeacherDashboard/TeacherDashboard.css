@@ -268,6 +268,16 @@
     line-height: 1.35;
 }
 
+.group-recommendations-panel .recommendation-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.group-recommendations-panel .recommendation-item {
+    height: 100%;
+}
+
 .student-stat-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -326,23 +336,42 @@
 .learning-progress {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
 }
 
-.learning-progress-section {
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid #E8E8E8;
+.learning-progress-panel {
+    min-height: 0;
 }
 
-.learning-progress-section h4 {
-    margin: 0 0 10px;
-    font-size: 18px;
-    font-weight: 600;
+.learning-progress-panel .student-stat-card__metrics {
+    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
 }
 
-.learning-progress-section .student-stat-card__metrics {
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+.learning-progress-panel .student-stat-card__metrics div {
+    padding: 9px 10px;
+}
+
+.learning-progress-panel .student-stat-card__metrics strong {
+    font-size: 17px;
+}
+
+.learning-progress-panel .gap-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+}
+
+.learning-progress-panel .gap-row {
+    padding: 9px 10px;
+}
+
+.learning-progress-panel .gap-row__title {
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+
+.learning-progress-panel .gap-row__meta {
+    font-size: 14px;
 }
 
 .learning-progress__summary {

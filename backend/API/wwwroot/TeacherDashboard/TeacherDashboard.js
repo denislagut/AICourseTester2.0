@@ -998,8 +998,10 @@ function renderSummary(summary) {
 function renderStudentAnalytics(analytics, recommendations) {
     const content = document.getElementById('student-content');
     const studentProgress = getStudentLearningProgress(analytics);
-    const studentStatistics = `
-        ${renderDetails([
+
+    content.innerHTML = `
+        ${renderAnalyticsFilterNotice()}
+        ${renderPanel('Статистика студента', renderDetails([
             ['Идентификатор пользователя', analytics.userId],
             ['Логин', analytics.userName],
             ['ФИО', analytics.fullName],
@@ -1008,15 +1010,10 @@ function renderStudentAnalytics(analytics, recommendations) {
             ['Количество пробелов', analytics.totalKnowledgeGaps],
             ['Средний показатель пробела', analytics.averageGapScore],
             ['Серьёзные ошибки', analytics.highSeverityErrorsCount]
-        ])}
-        ${renderLearningProgressSection('Динамика обучения', studentProgress)}
-    `;
-
-    content.innerHTML = `
-        ${renderAnalyticsFilterNotice()}
-        ${renderPanel('Статистика студента', studentStatistics)}
+        ]))}
         ${renderPanel('Пробелы в знаниях', renderKnowledgeGaps(analytics.topKnowledgeGaps))}
         ${renderPanel('Рекомендации', renderRecommendations(recommendations))}
+        ${renderPanel('Динамика обучения', renderLearningProgress(studentProgress), 'panel--wide learning-progress-panel')}
     `;
 }
 
@@ -1024,8 +1021,10 @@ function renderGroupAnalytics(analytics, recommendations) {
     const content = document.getElementById('group-content');
     const studentsStatistics = analytics.studentsStatistics || analytics.StudentsStatistics || [];
     const groupProgress = getGroupLearningProgress(analytics);
-    const groupStatistics = `
-        ${renderDetails([
+
+    content.innerHTML = `
+        ${renderAnalyticsFilterNotice()}
+        ${renderPanel('Статистика группы', renderDetails([
             ['Идентификатор группы', analytics.groupId],
             ['Название группы', analytics.groupName],
             ['Количество студентов', analytics.studentsCount],
@@ -1033,15 +1032,10 @@ function renderGroupAnalytics(analytics, recommendations) {
             ['Количество пробелов', analytics.totalKnowledgeGaps],
             ['Средний показатель пробела', analytics.averageGapScore],
             ['Серьёзные ошибки', analytics.highSeverityErrorsCount]
-        ])}
-        ${renderLearningProgressSection('Динамика обучения группы', groupProgress)}
-    `;
-
-    content.innerHTML = `
-        ${renderAnalyticsFilterNotice()}
-        ${renderPanel('Статистика группы', groupStatistics)}
+        ]))}
         ${renderPanel('Статистика студентов группы', renderGroupStudentsStatistics(studentsStatistics), 'panel--wide')}
-        ${renderPanel('Рекомендации группы', renderRecommendations(recommendations))}
+        ${renderPanel('Рекомендации группы', renderRecommendations(recommendations), 'panel--wide group-recommendations-panel')}
+        ${renderPanel('Динамика обучения группы', renderLearningProgress(groupProgress), 'panel--wide learning-progress-panel')}
     `;
 }
 
@@ -1064,15 +1058,6 @@ function renderPanel(title, body, extraClass = '') {
         <section class="panel ${escapeHtml(extraClass)}">
             <h3>${escapeHtml(title)}</h3>
             ${body}
-        </section>
-    `;
-}
-
-function renderLearningProgressSection(title, progress) {
-    return `
-        <section class="learning-progress-section">
-            <h4>${escapeHtml(title)}</h4>
-            ${renderLearningProgress(progress)}
         </section>
     `;
 }
