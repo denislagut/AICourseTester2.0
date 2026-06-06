@@ -1,8 +1,8 @@
 ﻿let dashboardGroups = [];
 const selectedStudentIds = { student: '', report: '', compare: '' };
 let activeCompareDateInput = null;
-let lastAutoSnapshotStudentKey = '';
-let lastAutoSnapshotGroupKey = '';
+let filterDictionaries = { errorTypes: [], knowledgeAspects: [] };
+let analyticsFilters = { excludedErrorTypeIds: [], excludedKnowledgeAspectIds: [] };
 const COMPARISON_TIME_OFFSET_HOURS = 6;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -34,10 +34,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('group-report-history-button').addEventListener('click', loadGroupReportHistory);
     document.getElementById('reports-content').addEventListener('click', toggleReportDetails);
     document.getElementById('reports-content').addEventListener('click', downloadReportFile);
+    document.getElementById('apply-filters-button').addEventListener('click', applyAnalyticsFilters);
+    document.getElementById('reset-filters-button').addEventListener('click', resetAnalyticsFilters);
     document.getElementById('profile-tooltip__button-logout').addEventListener('click', logout);
 
     loadSummary();
     loadDashboardGroups();
+    loadFilterDictionaries();
 });
 
 async function authorizedGet(path) {
@@ -51,7 +54,8 @@ async function authorizedGet(path) {
         authtoken = await refreshToken();
     }
 
-    const response = await fetch(`${apiHost}${path}`, {
+    const url = buildApiUrl(path);
+    const response = await fetch(url, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
@@ -67,13 +71,13 @@ async function authorizedGet(path) {
     }
 
     if (!response.ok) {
-        throw new Error(`Ошибка запроса: ${response.status}`);
+        throw new Error(await getResponseErrorMessage(response, url));
     }
 
-    return response.json();
+    return readJsonResponse(response, url);
 }
 
-async function authorizedPost(path) {
+async function authorizedPost(path, body = null) {
     let authtoken = Cookies.get('.AspNetCore.Identity.Application');
 
     if (!authtoken) {
@@ -84,40 +88,66 @@ async function authorizedPost(path) {
         authtoken = await refreshToken();
     }
 
-    const response = await fetch(`${apiHost}${path}`, {
+    const url = buildApiUrl(path);
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${authtoken}`
-        }
+        },
+        body: body ? JSON.stringify(body) : null
     });
 
     if (response.status === 401) {
         const refreshedToken = await refreshToken();
         if (refreshedToken) {
-            return authorizedPost(path);
+            return authorizedPost(path, body);
         }
     }
 
     if (!response.ok) {
-        throw new Error(await getResponseErrorMessage(response));
+        throw new Error(await getResponseErrorMessage(response, url));
     }
 
-    return response.json();
+    return readJsonResponse(response, url);
 }
 
-async function getResponseErrorMessage(response) {
+function buildApiUrl(path) {
+    return `${apiHost}${path}`;
+}
+
+async function readJsonResponse(response, url) {
+    const text = await response.text();
+
+    if (!text) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error(`API вернул не JSON. URL: ${url}. Статус: ${response.status}. Ответ: ${text.slice(0, 200)}`);
+    }
+}
+
+async function getResponseErrorMessage(response, url = '') {
     if (response.status === 404) {
-        return 'Пользователь или группа не найдены';
+        return url
+            ? `Ошибка запроса 404. Пользователь или группа не найдены. URL: ${url}`
+            : 'Пользователь или группа не найдены';
     }
 
     const text = await response.text();
 
     if (text) {
-        return text.replace(/^"|"$/g, '');
+        return url
+            ? `Ошибка запроса ${response.status}. URL: ${url}. Ответ: ${text.replace(/^"|"$/g, '').slice(0, 200)}`
+            : text.replace(/^"|"$/g, '');
     }
 
-    return `Ошибка запроса: ${response.status}`;
+    return url
+        ? `Ошибка запроса ${response.status}. URL: ${url}`
+        : `Ошибка запроса: ${response.status}`;
 }
 
 async function authorizedGetWithMessage(path) {
@@ -144,7 +174,8 @@ async function authorizedGetDetailed(path) {
         authtoken = await refreshToken();
     }
 
-    const response = await fetch(`${apiHost}${path}`, {
+    const url = buildApiUrl(path);
+    const response = await fetch(url, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
@@ -160,10 +191,10 @@ async function authorizedGetDetailed(path) {
     }
 
     if (!response.ok) {
-        throw new Error(await getResponseErrorMessage(response));
+        throw new Error(await getResponseErrorMessage(response, url));
     }
 
-    return response.json();
+    return readJsonResponse(response, url);
 }
 
 async function authorizedGetBlob(path) {
@@ -177,7 +208,8 @@ async function authorizedGetBlob(path) {
         authtoken = await refreshToken();
     }
 
-    const response = await fetch(`${apiHost}${path}`, {
+    const url = buildApiUrl(path);
+    const response = await fetch(url, {
         method: 'GET',
         headers: {
             Authorization: `Bearer ${authtoken}`
@@ -192,7 +224,7 @@ async function authorizedGetBlob(path) {
     }
 
     if (!response.ok) {
-        throw new Error(await getResponseErrorMessage(response));
+        throw new Error(await getResponseErrorMessage(response, url));
     }
 
     return response.blob();
@@ -232,6 +264,183 @@ function populateGroupSelect(selectId, groups) {
     select.innerHTML += groups.map(group => `
         <option value="${escapeHtml(group.id)}">${escapeHtml(group.name || `Группа #${group.id}`)}</option>
     `).join('');
+}
+
+async function loadFilterDictionaries() {
+    const status = document.getElementById('filters-status');
+
+    try {
+        const [errorTypes, knowledgeAspects] = await Promise.all([
+            authorizedGet('/Analytics/ErrorTypes'),
+            authorizedGet('/Analytics/KnowledgeAspects')
+        ]);
+
+        filterDictionaries = {
+            errorTypes: Array.isArray(errorTypes) ? errorTypes : [],
+            knowledgeAspects: Array.isArray(knowledgeAspects) ? knowledgeAspects : []
+        };
+
+        renderFilterLists();
+        renderActiveFiltersSummary();
+        status.textContent = '';
+        status.classList.remove('error');
+    } catch (error) {
+        setError(status, `Не удалось загрузить фильтры: ${error.message}`);
+        document.getElementById('error-type-filter-list').innerHTML = '<span class="empty-state">Типы ошибок не загружены.</span>';
+        document.getElementById('knowledge-aspect-filter-list').innerHTML = '<span class="empty-state">Аспекты знаний не загружены.</span>';
+    }
+}
+
+function renderFilterLists() {
+    document.getElementById('error-type-filter-list').innerHTML = renderCheckboxList(
+        filterDictionaries.errorTypes,
+        'excluded-error-type',
+        item => `${item.name || item.Name || 'Тип ошибки'}${item.code || item.Code ? ` (${item.code || item.Code})` : ''}`,
+        'Типы ошибок не найдены.'
+    );
+    document.getElementById('knowledge-aspect-filter-list').innerHTML = renderCheckboxList(
+        filterDictionaries.knowledgeAspects,
+        'excluded-knowledge-aspect',
+        item => {
+            const topic = item.topic || item.Topic || 'тема не указана';
+            const name = item.name || item.Name || 'Аспект знания';
+            return `${topic}: ${name}`;
+        },
+        'Аспекты знаний не найдены.'
+    );
+}
+
+function renderCheckboxList(items, name, labelFactory, emptyText) {
+    if (!Array.isArray(items) || items.length === 0) {
+        return `<span class="empty-state">${escapeHtml(emptyText)}</span>`;
+    }
+
+    return items.map(item => {
+        const id = item.id ?? item.Id;
+        const description = item.description || item.Description || '';
+
+        return `
+            <label class="filter-checkbox-item">
+                <input type="checkbox" name="${escapeHtml(name)}" value="${escapeHtml(id)}">
+                <span>
+                    <strong>${escapeHtml(labelFactory(item))}</strong>
+                    ${description ? `<small>${escapeHtml(description)}</small>` : ''}
+                </span>
+            </label>
+        `;
+    }).join('');
+}
+
+function applyAnalyticsFilters() {
+    analyticsFilters = collectAnalyticsFilters();
+    renderActiveFiltersSummary();
+    const status = document.getElementById('filters-status');
+    status.textContent = hasActiveFilters() ? 'Фильтр применён.' : 'Фильтры не выбраны.';
+    status.classList.remove('error');
+    refreshVisibleAnalyticsBlocks();
+}
+
+function resetAnalyticsFilters() {
+    document.querySelectorAll('input[name="excluded-error-type"], input[name="excluded-knowledge-aspect"]')
+        .forEach(input => input.checked = false);
+    analyticsFilters = { excludedErrorTypeIds: [], excludedKnowledgeAspectIds: [] };
+    renderActiveFiltersSummary();
+    const status = document.getElementById('filters-status');
+    status.textContent = 'Фильтр сброшен.';
+    status.classList.remove('error');
+    refreshVisibleAnalyticsBlocks();
+}
+
+function refreshVisibleAnalyticsBlocks() {
+    const studentContent = document.getElementById('student-content');
+    const groupContent = document.getElementById('group-content');
+
+    if (getSelectedStudentId('student') && studentContent.innerHTML.trim()) {
+        loadStudentDashboard();
+    }
+
+    if (getSelectedGroupId('group-analytics-select') && groupContent.innerHTML.trim()) {
+        loadGroupDashboard();
+    }
+}
+
+function collectAnalyticsFilters() {
+    return {
+        excludedErrorTypeIds: collectCheckedIds('excluded-error-type'),
+        excludedKnowledgeAspectIds: collectCheckedIds('excluded-knowledge-aspect')
+    };
+}
+
+function collectCheckedIds(name) {
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`))
+        .map(input => Number(input.value))
+        .filter(id => Number.isInteger(id) && id > 0);
+}
+
+function hasActiveFilters() {
+    return analyticsFilters.excludedErrorTypeIds.length > 0 ||
+        analyticsFilters.excludedKnowledgeAspectIds.length > 0;
+}
+
+function renderActiveFiltersSummary() {
+    const container = document.getElementById('active-filters-summary');
+
+    if (!hasActiveFilters()) {
+        container.textContent = 'Фильтры не выбраны.';
+        return;
+    }
+
+    container.innerHTML = `
+        <strong>Применены фильтры:</strong>
+        <span>исключённые типы ошибок: ${escapeHtml(formatFilterNames(analyticsFilters.excludedErrorTypeIds, filterDictionaries.errorTypes, formatErrorTypeFilterName))}</span>
+        <span>исключённые аспекты знаний: ${escapeHtml(formatFilterNames(analyticsFilters.excludedKnowledgeAspectIds, filterDictionaries.knowledgeAspects, formatKnowledgeAspectFilterName))}</span>
+    `;
+}
+
+function formatFilterNames(ids, dictionary, formatter) {
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return 'не выбраны';
+    }
+
+    return ids
+        .map(id => {
+            const item = dictionary.find(entry => Number(entry.id ?? entry.Id) === Number(id));
+            return item ? formatter(item) : `#${id}`;
+        })
+        .join(', ');
+}
+
+function formatErrorTypeFilterName(item) {
+    const code = item.code || item.Code;
+    const name = item.name || item.Name || 'Тип ошибки';
+    return code ? `${name} (${code})` : name;
+}
+
+function formatKnowledgeAspectFilterName(item) {
+    const topic = item.topic || item.Topic;
+    const name = item.name || item.Name || 'Аспект знания';
+    return topic ? `${topic}: ${name}` : name;
+}
+
+function buildAnalyticsFilterQuery(prefix = '?') {
+    analyticsFilters = collectAnalyticsFilters();
+    renderActiveFiltersSummary();
+
+    const params = new URLSearchParams();
+    analyticsFilters.excludedErrorTypeIds.forEach(id => params.append('excludedErrorTypeIds', id));
+    analyticsFilters.excludedKnowledgeAspectIds.forEach(id => params.append('excludedKnowledgeAspectIds', id));
+    const query = params.toString();
+    return query ? `${prefix}${query}` : '';
+}
+
+function buildReportFilterBody() {
+    analyticsFilters = collectAnalyticsFilters();
+    renderActiveFiltersSummary();
+
+    return {
+        excludedErrorTypeIds: analyticsFilters.excludedErrorTypeIds,
+        excludedKnowledgeAspectIds: analyticsFilters.excludedKnowledgeAspectIds
+    };
 }
 
 async function loadStudentsForGroup(scope) {
@@ -313,7 +522,7 @@ async function loadExistingGroupUsers(groupId) {
     try {
         return await authorizedGet(`/Users/Groups/${encodeURIComponent(groupId)}/`);
     } catch (error) {
-        if (String(error.message).endsWith('404')) {
+        if (String(error.message).includes('404')) {
             return [];
         }
 
@@ -365,7 +574,7 @@ async function loadSummary() {
 }
 
 async function loadStudentDashboard(event) {
-    event.preventDefault();
+    event?.preventDefault();
 
     const userId = getSelectedStudentId('student');
     const status = document.getElementById('student-status');
@@ -379,9 +588,10 @@ async function loadStudentDashboard(event) {
     setLoading(status, content);
 
     try {
+        const filterQuery = buildAnalyticsFilterQuery();
         const [analytics, recommendations] = await Promise.all([
-            authorizedGet(`/Analytics/Students/${encodeURIComponent(userId)}`),
-            authorizedGet(`/Recommendations/Students/${encodeURIComponent(userId)}`)
+            authorizedGet(`/Analytics/Students/${encodeURIComponent(userId)}${filterQuery}`),
+            authorizedGet(`/Recommendations/Students/${encodeURIComponent(userId)}${filterQuery}`)
         ]);
 
         renderStudentAnalytics(analytics, recommendations);
@@ -393,7 +603,7 @@ async function loadStudentDashboard(event) {
 }
 
 async function loadGroupDashboard(event) {
-    event.preventDefault();
+    event?.preventDefault();
 
     const groupId = getSelectedGroupId('group-analytics-select');
     const status = document.getElementById('group-status');
@@ -407,9 +617,10 @@ async function loadGroupDashboard(event) {
     setLoading(status, content);
 
     try {
+        const filterQuery = buildAnalyticsFilterQuery();
         const [analytics, recommendations] = await Promise.all([
-            authorizedGet(`/Analytics/Groups/${encodeURIComponent(groupId)}`),
-            authorizedGet(`/Recommendations/Groups/${encodeURIComponent(groupId)}`)
+            authorizedGet(`/Analytics/Groups/${encodeURIComponent(groupId)}${filterQuery}`),
+            authorizedGet(`/Recommendations/Groups/${encodeURIComponent(groupId)}${filterQuery}`)
         ]);
 
         renderGroupAnalytics(analytics, recommendations);
@@ -435,7 +646,9 @@ async function generateStudentReport(event) {
     setLoading(status, content);
 
     try {
-        const report = await authorizedPost(`/Reports/Students/${encodeURIComponent(userId)}/Generate`);
+        const report = await authorizedPost(
+            `/Reports/Students/${encodeURIComponent(userId)}/Generate`,
+            buildReportFilterBody());
         status.textContent = 'Отчёт по студенту успешно сформирован.';
         status.classList.remove('error');
         content.innerHTML = renderReports([report]);
@@ -460,7 +673,9 @@ async function generateGroupReport(event) {
     setLoading(status, content);
 
     try {
-        const report = await authorizedPost(`/Reports/Groups/${encodeURIComponent(groupId)}/Generate`);
+        const report = await authorizedPost(
+            `/Reports/Groups/${encodeURIComponent(groupId)}/Generate`,
+            buildReportFilterBody());
         status.textContent = 'Отчёт по группе успешно сформирован.';
         status.classList.remove('error');
         content.innerHTML = renderReports([report]);
@@ -549,45 +764,15 @@ async function loadCompareSnapshotDates() {
         return;
     }
 
-    await createFreshCompareSnapshot(mode, targetId, status);
-
     try {
         const path = mode === 'student'
-            ? `/Analytics/Snapshots/Students/${encodeURIComponent(targetId)}`
-            : `/Analytics/Snapshots/Groups/${encodeURIComponent(targetId)}`;
-        const snapshots = await authorizedGetWithMessage(path);
-        renderCompareDateChips(snapshots);
+            ? `/Analytics/Students/${encodeURIComponent(targetId)}/ActivityDates`
+            : `/Analytics/Groups/${encodeURIComponent(targetId)}/ActivityDates`;
+        const activityDates = await authorizedGetWithMessage(path);
+        renderCompareDateChips(activityDates);
     } catch (error) {
         clearCompareSnapshotDates('Даты с данными не найдены');
         setError(status, error.message);
-    }
-}
-
-async function createFreshCompareSnapshot(mode, targetId, status) {
-    const isStudentMode = mode === 'student';
-    const currentComparisonDate = formatComparisonDateParts(addComparisonOffset(new Date()));
-    const snapshotKey = `${targetId}|${currentComparisonDate.inputValue}`;
-    const alreadyCreated = isStudentMode
-        ? lastAutoSnapshotStudentKey === snapshotKey
-        : lastAutoSnapshotGroupKey === snapshotKey;
-
-    if (alreadyCreated) {
-        return;
-    }
-
-    try {
-        const path = isStudentMode
-            ? `/Analytics/Students/${encodeURIComponent(targetId)}`
-            : `/Analytics/Groups/${encodeURIComponent(targetId)}`;
-        await authorizedGet(path);
-
-        if (isStudentMode) {
-            lastAutoSnapshotStudentKey = snapshotKey;
-        } else {
-            lastAutoSnapshotGroupKey = snapshotKey;
-        }
-    } catch {
-        setError(status, 'Не удалось сформировать актуальную аналитику. Загрузите аналитику вручную.');
     }
 }
 
@@ -595,18 +780,18 @@ function clearCompareSnapshotDates(message) {
     document.getElementById('compare-date-chips').innerHTML = `<span class="empty-state">${escapeHtml(message)}</span>`;
 }
 
-function renderCompareDateChips(snapshots) {
+function renderCompareDateChips(activityDates) {
     const container = document.getElementById('compare-date-chips');
 
-    if (!Array.isArray(snapshots) || snapshots.length === 0) {
+    if (!Array.isArray(activityDates) || activityDates.length === 0) {
         clearCompareSnapshotDates('Даты с данными не найдены');
         return;
     }
 
     const uniqueDates = new Map();
 
-    snapshots.forEach(snapshot => {
-        const dateInfo = getComparisonDateInfo(snapshot.createdAt || snapshot.CreatedAt);
+    activityDates.forEach(dateValue => {
+        const dateInfo = formatActivityDateChip(dateValue);
 
         if (dateInfo && !uniqueDates.has(dateInfo.inputValue)) {
             uniqueDates.set(dateInfo.inputValue, dateInfo.displayValue);
@@ -621,6 +806,20 @@ function renderCompareDateChips(snapshots) {
     container.innerHTML = Array.from(uniqueDates.entries()).map(([inputValue, displayValue]) => `
         <button type="button" class="date-chip" data-date="${escapeHtml(inputValue)}">${escapeHtml(displayValue)}</button>
     `).join('');
+}
+
+function formatActivityDateChip(dateValue) {
+    const normalizedDate = String(dateValue || '').slice(0, 10);
+    const match = normalizedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!match) {
+        return null;
+    }
+
+    return {
+        displayValue: `${match[3]}.${match[2]}.${match[1]}`,
+        inputValue: normalizedDate
+    };
 }
 
 function applySnapshotDateChip(event) {
@@ -693,6 +892,8 @@ function buildCompareQuery() {
             params.set(name, value);
         }
     });
+    analyticsFilters.excludedErrorTypeIds.forEach(id => params.append('excludedErrorTypeIds', id));
+    analyticsFilters.excludedKnowledgeAspectIds.forEach(id => params.append('excludedKnowledgeAspectIds', id));
 
     return params.toString();
 }
@@ -796,7 +997,10 @@ function renderSummary(summary) {
 
 function renderStudentAnalytics(analytics, recommendations) {
     const content = document.getElementById('student-content');
+    const studentProgress = getStudentLearningProgress(analytics);
+
     content.innerHTML = `
+        ${renderAnalyticsFilterNotice()}
         ${renderPanel('Статистика студента', renderDetails([
             ['Идентификатор пользователя', analytics.userId],
             ['Логин', analytics.userName],
@@ -809,12 +1013,17 @@ function renderStudentAnalytics(analytics, recommendations) {
         ]))}
         ${renderPanel('Пробелы в знаниях', renderKnowledgeGaps(analytics.topKnowledgeGaps))}
         ${renderPanel('Рекомендации', renderRecommendations(recommendations))}
+        ${renderPanel('Динамика обучения', renderLearningProgress(studentProgress), 'panel--wide learning-progress-panel')}
     `;
 }
 
 function renderGroupAnalytics(analytics, recommendations) {
     const content = document.getElementById('group-content');
+    const studentsStatistics = analytics.studentsStatistics || analytics.StudentsStatistics || [];
+    const groupProgress = getGroupLearningProgress(analytics);
+
     content.innerHTML = `
+        ${renderAnalyticsFilterNotice()}
         ${renderPanel('Статистика группы', renderDetails([
             ['Идентификатор группы', analytics.groupId],
             ['Название группы', analytics.groupName],
@@ -824,17 +1033,53 @@ function renderGroupAnalytics(analytics, recommendations) {
             ['Средний показатель пробела', analytics.averageGapScore],
             ['Серьёзные ошибки', analytics.highSeverityErrorsCount]
         ]))}
-        ${renderPanel('Рекомендации группы', renderRecommendations(recommendations))}
+        ${renderPanel('Статистика студентов группы', renderGroupStudentsStatistics(studentsStatistics), 'panel--wide')}
+        ${renderPanel('Рекомендации группы', renderRecommendations(recommendations), 'panel--wide group-recommendations-panel')}
+        ${renderPanel('Динамика обучения группы', renderLearningProgress(groupProgress), 'panel--wide learning-progress-panel')}
     `;
 }
 
-function renderPanel(title, body) {
+function renderAnalyticsFilterNotice() {
+    if (!hasActiveFilters()) {
+        return '';
+    }
+
     return `
-        <section class="panel">
+        <div class="active-filters-summary panel--wide">
+            <strong>Аналитика рассчитана с фильтрами:</strong>
+            <span>исключённые типы ошибок: ${escapeHtml(formatFilterNames(analyticsFilters.excludedErrorTypeIds, filterDictionaries.errorTypes, formatErrorTypeFilterName))}</span>
+            <span>исключённые аспекты знаний: ${escapeHtml(formatFilterNames(analyticsFilters.excludedKnowledgeAspectIds, filterDictionaries.knowledgeAspects, formatKnowledgeAspectFilterName))}</span>
+        </div>
+    `;
+}
+
+function renderPanel(title, body, extraClass = '') {
+    return `
+        <section class="panel ${escapeHtml(extraClass)}">
             <h3>${escapeHtml(title)}</h3>
             ${body}
         </section>
     `;
+}
+
+function getStudentLearningProgress(analytics) {
+    return analytics?.studentProgress ||
+        analytics?.StudentProgress ||
+        analytics?.learningProgress ||
+        analytics?.LearningProgress ||
+        null;
+}
+
+function getGroupLearningProgress(analytics) {
+    return analytics?.groupProgress ||
+        analytics?.GroupProgress ||
+        analytics?.learningProgress ||
+        analytics?.LearningProgress ||
+        null;
+}
+
+function getAnyLearningProgress(analytics) {
+    return getStudentLearningProgress(analytics) || getGroupLearningProgress(analytics);
 }
 
 function renderDetails(rows) {
@@ -865,6 +1110,179 @@ function renderKnowledgeGaps(gaps) {
                         Количество: ${formatValue(gap.count)} | Средний показатель: ${formatValue(gap.averageGapScore)} | Максимальный показатель: ${formatValue(gap.maxGapScore)}
                     </div>
                 </article>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderLearningProgress(progress, compact = false) {
+    if (!progress) {
+        return '<p class="empty-state">Недостаточно данных для оценки динамики обучения</p>';
+    }
+
+    const gapsProgress = progress.gapsProgress || progress.GapsProgress || [];
+    const hasData = gapsProgress.length > 0 ||
+        progress.previousAverageGapScore != null ||
+        progress.PreviousAverageGapScore != null ||
+        Number(progress.currentAverageGapScore ?? progress.CurrentAverageGapScore ?? 0) > 0;
+
+    if (!hasData) {
+        return '<p class="empty-state">Недостаточно данных для оценки динамики обучения</p>';
+    }
+
+    const current = progress.currentAverageGapScore ?? progress.CurrentAverageGapScore;
+    const previous = progress.previousAverageGapScore ?? progress.PreviousAverageGapScore;
+    const delta = progress.averageGapScoreDelta ?? progress.AverageGapScoreDelta;
+    const trendSummary = progress.trendSummary || progress.TrendSummary;
+
+    return `
+        <div class="learning-progress">
+            <div class="student-stat-card__metrics">
+                ${renderStudentStatMetric('Текущий показатель', current)}
+                ${renderStudentStatMetric('Предыдущий показатель', previous)}
+                ${renderStudentStatMetric('Изменение', formatSignedValue(delta))}
+                ${renderStudentStatMetric('Улучшено', progress.improvedGapsCount ?? progress.ImprovedGapsCount)}
+                ${renderStudentStatMetric('Ухудшилось', progress.worsenedGapsCount ?? progress.WorsenedGapsCount)}
+                ${renderStudentStatMetric('Без изменений', progress.stableGapsCount ?? progress.StableGapsCount)}
+                ${renderStudentStatMetric('Новые пробелы', progress.newGapsCount ?? progress.NewGapsCount)}
+            </div>
+            <p class="learning-progress__summary">${escapeHtml(buildLearningProgressConclusion(trendSummary, delta))}</p>
+            ${compact ? '' : renderLearningProgressGaps(gapsProgress)}
+        </div>
+    `;
+}
+
+function renderLearningProgressGaps(gapsProgress) {
+    if (!Array.isArray(gapsProgress) || gapsProgress.length === 0) {
+        return '<p class="empty-state">Недостаточно данных для оценки динамики обучения</p>';
+    }
+
+    return `
+        <div class="gap-list">
+            ${gapsProgress.map(item => {
+                const previous = item.previousGapScore ?? item.PreviousGapScore;
+                const current = item.currentGapScore ?? item.CurrentGapScore;
+                const delta = item.gapScoreDelta ?? item.GapScoreDelta;
+                const trend = item.trend || item.Trend;
+                const level = item.level || item.Level;
+
+                return `
+                    <article class="gap-row">
+                        <div class="gap-row__title">${escapeHtml(item.aspectName || item.AspectName || `Аспект #${item.knowledgeAspectId || item.KnowledgeAspectId}`)}</div>
+                        <div class="gap-row__meta">
+                            Тема: ${escapeHtml(item.topic || item.Topic || 'не указана')}<br>
+                            Предыдущий показатель: ${formatValue(previous)} |
+                            Текущий показатель: ${formatValue(current)} |
+                            Изменение: ${formatSignedValue(delta)}<br>
+                            Тренд: ${escapeHtml(translateTrend(trend))} |
+                            Уровень: ${escapeHtml(translateRiskLevel(level))}
+                        </div>
+                    </article>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderGroupStudentsStatistics(students) {
+    if (!Array.isArray(students) || students.length === 0) {
+        return '<p class="empty-state">Статистика студентов группы пока не найдена.</p>';
+    }
+
+    return `
+        <div class="student-stat-list">
+            ${students.map(student => {
+                const gaps = student.topKnowledgeGaps || student.TopKnowledgeGaps || [];
+                const errors = student.topErrorTypes || student.TopErrorTypes || [];
+                const learningProgress = student.learningProgress || student.LearningProgress || null;
+
+                return `
+                    <article class="student-stat-card">
+                        <div class="student-stat-card__header">
+                            <div>
+                                <h4>${escapeHtml(getStudentStatisticsName(student))}</h4>
+                                <span>${escapeHtml(student.userName || student.UserName || student.userId || student.UserId || '')}</span>
+                            </div>
+                        </div>
+                        <div class="student-stat-card__metrics">
+                            ${renderStudentStatMetric('Ошибки', student.totalErrors ?? student.TotalErrors)}
+                            ${renderStudentStatMetric('Пробелы знаний', student.totalKnowledgeGaps ?? student.TotalKnowledgeGaps)}
+                            ${renderStudentStatMetric('Средний показатель', student.averageGapScore ?? student.AverageGapScore)}
+                            ${renderStudentStatMetric('Серьёзные ошибки', student.highSeverityErrorsCount ?? student.HighSeverityErrorsCount)}
+                            ${renderStudentStatMetric('Изменение', formatSignedValue(student.averageGapScoreDelta ?? student.AverageGapScoreDelta))}
+                        </div>
+                        <details class="student-stat-details">
+                            <summary>Подробнее</summary>
+                            <div class="student-stat-details__content">
+                                <section>
+                                    <h5>Динамика обучения</h5>
+                                    ${renderLearningProgress(learningProgress, true)}
+                                </section>
+                                <section>
+                                    <h5>Проблемные темы</h5>
+                                    ${renderStudentTopKnowledgeGaps(gaps)}
+                                </section>
+                                <section>
+                                    <h5>Типы ошибок</h5>
+                                    ${renderStudentTopErrorTypes(errors)}
+                                </section>
+                            </div>
+                        </details>
+                    </article>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderStudentStatMetric(label, value) {
+    return `
+        <div>
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(formatValue(value))}</strong>
+        </div>
+    `;
+}
+
+function getStudentStatisticsName(student) {
+    return student.fullName || student.FullName || student.userName || student.UserName || student.userId || student.UserId || 'Студент';
+}
+
+function renderStudentTopKnowledgeGaps(gaps) {
+    if (!Array.isArray(gaps) || gaps.length === 0) {
+        return '<p class="empty-state">Проблемные темы не найдены.</p>';
+    }
+
+    return `
+        <div class="student-stat-mini-list">
+            ${gaps.map(gap => `
+                <div>
+                    <strong>${escapeHtml(gap.aspectName || gap.AspectName || `Аспект #${gap.knowledgeAspectId || gap.KnowledgeAspectId}`)}</strong>
+                    <span>
+                        Тема: ${escapeHtml(gap.topicName || gap.TopicName || 'не указана')} |
+                        Средний показатель: ${formatValue(gap.averageGapScore ?? gap.AverageGapScore)}
+                    </span>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderStudentTopErrorTypes(errors) {
+    if (!Array.isArray(errors) || errors.length === 0) {
+        return '<p class="empty-state">Типы ошибок не найдены.</p>';
+    }
+
+    return `
+        <div class="student-stat-mini-list">
+            ${errors.map(error => `
+                <div>
+                    <strong>${escapeHtml(error.name || error.Name || error.code || error.Code || `Ошибка #${error.errorTypeId || error.ErrorTypeId}`)}</strong>
+                    <span>
+                        Количество: ${formatValue(error.count ?? error.Count)} |
+                        Средняя серьёзность: ${formatValue(error.averageSeverity ?? error.AverageSeverity)}
+                    </span>
+                </div>
             `).join('')}
         </div>
     `;
@@ -1012,6 +1430,7 @@ function renderReports(reports) {
                         </div>
                         <div id="${escapeHtml(detailsId)}" class="report-card__details">
                             ${renderPedagogicalSummary(summary)}
+                            ${renderReportFilters(summary)}
                             ${renderReportAnalytics(analytics)}
                             ${renderReportRecommendations(recommendations)}
                         </div>
@@ -1062,6 +1481,38 @@ function renderPedagogicalSummary(summary) {
     `;
 }
 
+function renderReportFilters(summary) {
+    const filters = summary?.filters || summary?.Filters;
+
+    if (!filters) {
+        return '';
+    }
+
+    const excludedErrorTypeIds = filters.excludedErrorTypeIds || filters.ExcludedErrorTypeIds || [];
+    const excludedKnowledgeAspectIds = filters.excludedKnowledgeAspectIds || filters.ExcludedKnowledgeAspectIds || [];
+
+    if ((!Array.isArray(excludedErrorTypeIds) || excludedErrorTypeIds.length === 0) &&
+        (!Array.isArray(excludedKnowledgeAspectIds) || excludedKnowledgeAspectIds.length === 0)) {
+        return '';
+    }
+
+    return `
+        <div class="report-block report-filters-block">
+            <h4>Применены фильтры</h4>
+            <div class="details-list">
+                <div>
+                    <span>Исключённые типы ошибок</span>
+                    <span>${escapeHtml(formatFilterNames(excludedErrorTypeIds, filterDictionaries.errorTypes, formatErrorTypeFilterName))}</span>
+                </div>
+                <div>
+                    <span>Исключённые аспекты знаний</span>
+                    <span>${escapeHtml(formatFilterNames(excludedKnowledgeAspectIds, filterDictionaries.knowledgeAspects, formatKnowledgeAspectFilterName))}</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function renderMainProblems(problems) {
     if (!Array.isArray(problems) || problems.length === 0) {
         return '<p class="empty-state">Основные проблемы не выделены.</p>';
@@ -1103,6 +1554,8 @@ function renderReportAnalytics(analytics) {
 
     const topGaps = parseJson(analytics.TopKnowledgeGapsJson || analytics.topKnowledgeGapsJson) || [];
     const topErrors = parseJson(analytics.TopErrorTypesJson || analytics.topErrorTypesJson) || [];
+    const studentsStatistics = analytics.StudentsStatistics || analytics.studentsStatistics || [];
+    const learningProgress = getAnyLearningProgress(analytics);
 
     return `
         <div class="report-block">
@@ -1119,12 +1572,30 @@ function renderReportAnalytics(analytics) {
             ${renderGapScoreIndicator(analytics.AverageGapScore ?? analytics.averageGapScore)}
         </div>
         <div class="report-block">
+            <h4>${studentsStatistics.length > 0 ? 'Динамика обучения группы' : 'Динамика обучения'}</h4>
+            ${renderLearningProgress(learningProgress)}
+        </div>
+        ${renderReportGroupStudentsStatistics(studentsStatistics)}
+        <div class="report-block">
             <h4>Проблемные темы</h4>
             ${renderKnowledgeGapChart(topGaps)}
         </div>
         <div class="report-block">
             <h4>Основные типы ошибок</h4>
             ${renderErrorTypeChart(topErrors)}
+        </div>
+    `;
+}
+
+function renderReportGroupStudentsStatistics(students) {
+    if (!Array.isArray(students) || students.length === 0) {
+        return '';
+    }
+
+    return `
+        <div class="report-block">
+            <h4>Статистика студентов группы</h4>
+            ${renderGroupStudentsStatistics(students)}
         </div>
     `;
 }
@@ -1391,6 +1862,23 @@ function formatValue(value) {
     return String(value);
 }
 
+function formatSignedValue(value) {
+    if (value === null || value === undefined || value === '') {
+        return '-';
+    }
+
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) {
+        return String(value);
+    }
+
+    if (numericValue > 0) {
+        return `+${numericValue.toFixed(2).replace(/\.?0+$/, '')}`;
+    }
+
+    return numericValue.toFixed(2).replace(/\.?0+$/, '');
+}
+
 function priorityClass(priority) {
     const normalized = String(priority || '').toLowerCase();
 
@@ -1436,10 +1924,43 @@ function translateReportType(reportType) {
 function translateRiskLevel(level) {
     const normalized = String(level || '').toLowerCase();
 
+    if (normalized === 'critical') return 'Критический';
     if (normalized === 'high') return 'Высокий';
     if (normalized === 'medium') return 'Средний';
     if (normalized === 'low') return 'Низкий';
     return '-';
+}
+
+function translateTrend(trend) {
+    const normalized = String(trend || '').toLowerCase();
+
+    if (normalized === 'improved') return 'Улучшение';
+    if (normalized === 'worsened') return 'Ухудшение';
+    if (normalized === 'new') return 'Новый пробел';
+    if (normalized === 'stable') return 'Без изменений';
+    return formatValue(trend);
+}
+
+function buildLearningProgressConclusion(trendSummary, delta) {
+    const numericDelta = Number(delta);
+    const formattedDelta = Number.isNaN(numericDelta)
+        ? ''
+        : ` на ${Math.abs(numericDelta).toFixed(2).replace(/\.?0+$/, '')}`;
+    const normalized = String(trendSummary || '').toLowerCase();
+
+    if (normalized === 'improved') {
+        return `Показатель проблемности снизился${formattedDelta} — наблюдается улучшение`;
+    }
+
+    if (normalized === 'worsened') {
+        return `Показатель проблемности увеличился${formattedDelta} — требуется дополнительная работа`;
+    }
+
+    if (normalized === 'stable') {
+        return 'Существенных изменений не выявлено';
+    }
+
+    return 'Недостаточно данных для оценки динамики';
 }
 
 function formatDate(value) {

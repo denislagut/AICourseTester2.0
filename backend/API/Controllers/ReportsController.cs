@@ -2,6 +2,7 @@ using AICourseTester.DTO;
 using AICourseTester.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace AICourseTester.Controllers
 {
@@ -20,11 +21,13 @@ namespace AICourseTester.Controllers
 		}
 
 		[HttpPost("Students/{userId}/Generate")]
-		public async Task<ActionResult<GeneratedReportDTO>> GenerateStudentReport(string userId)
+		public async Task<ActionResult<GeneratedReportDTO>> GenerateStudentReport(
+			string userId,
+			[FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] GenerateReportRequestDTO? request = null)
 		{
 			try
 			{
-				var report = await _reportsService.GenerateStudentReportAsync(userId);
+				var report = await _reportsService.GenerateStudentReportAsync(userId, request);
 
 				if (report == null)
 				{
@@ -40,11 +43,13 @@ namespace AICourseTester.Controllers
 		}
 
 		[HttpPost("Groups/{groupId:int}/Generate")]
-		public async Task<ActionResult<GeneratedReportDTO>> GenerateGroupReport(int groupId)
+		public async Task<ActionResult<GeneratedReportDTO>> GenerateGroupReport(
+			int groupId,
+			[FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] GenerateReportRequestDTO? request = null)
 		{
 			try
 			{
-				var report = await _reportsService.GenerateGroupReportAsync(groupId);
+				var report = await _reportsService.GenerateGroupReportAsync(groupId, request);
 
 				if (report == null)
 				{

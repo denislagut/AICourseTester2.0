@@ -33,7 +33,10 @@ namespace AICourseTester.Services
 
 			using var workbook = new XLWorkbook();
 			AddSummarySheet(workbook, data);
+			AddFiltersSheet(workbook, data);
 			AddStatisticsSheet(workbook, data);
+			AddLearningProgressSheet(workbook, data);
+			AddStudentsStatisticsSheet(workbook, data);
 			AddKnowledgeDistributionSheet(workbook, data);
 			AddProblemsSheet(workbook, data);
 			AddErrorTypesSheet(workbook, data);
@@ -81,8 +84,11 @@ namespace AICourseTester.Services
 							column.Spacing(12);
 
 							AddPdfCard(column, "Краткий вывод", data.Conclusion);
+							AddPdfFiltersBlock(column, data);
 							AddPdfRiskBlock(column, data.RiskLevel);
 							AddPdfStatisticsBlock(column, data);
+							AddPdfLearningProgressBlock(column, data);
+							AddPdfStudentsStatisticsBlock(column, data);
 							AddPdfKnowledgeDistributionBlock(column, data);
 							AddPdfProblemsBlock(column, data);
 							AddPdfErrorTypesBlock(column, data);
@@ -123,6 +129,21 @@ namespace AICourseTester.Services
 			});
 		}
 
+		private static void AddFiltersSheet(XLWorkbook workbook, ReportExportData data)
+		{
+			if (!data.Filters.HasFilters)
+			{
+				return;
+			}
+
+			var sheet = workbook.Worksheets.Add("Примененные фильтры");
+			AddKeyValueRows(sheet, new[]
+			{
+				("Исключенные типы ошибок", JoinIds(data.Filters.ExcludedErrorTypeIds)),
+				("Исключенные аспекты знаний", JoinIds(data.Filters.ExcludedKnowledgeAspectIds))
+			});
+		}
+
 		private static void AddStatisticsSheet(XLWorkbook workbook, ReportExportData data)
 		{
 			var sheet = workbook.Worksheets.Add("Статистика");
@@ -133,6 +154,101 @@ namespace AICourseTester.Services
 				("Средний уровень пробелов", data.AverageGapScore.ToString("0.##")),
 				("Количество критических ошибок", data.HighSeverityErrorsCount.ToString())
 			});
+		}
+
+		private static void AddLearningProgressSheet(XLWorkbook workbook, ReportExportData data)
+		{
+			var sheet = workbook.Worksheets.Add("Динамика обучения");
+
+			if (!data.LearningProgress.HasData)
+			{
+				AddKeyValueRows(sheet, new[] { ("Состояние", "Недостаточно данных для оценки динамики") });
+				return;
+			}
+
+			AddHeader(
+				sheet,
+				"Студент",
+				"Аспект знания",
+				"Тема",
+				"Предыдущий показатель",
+				"Текущий показатель",
+				"Изменение",
+				"Тренд",
+				"Уровень");
+
+			var row = 2;
+			if (data.IsGroupReport && data.StudentsStatistics.Any(student => student.LearningProgress.HasData))
+			{
+				foreach (var student in data.StudentsStatistics)
+				{
+					foreach (var item in student.LearningProgress.GapsProgress)
+					{
+						AddLearningProgressRow(sheet, row++, student.DisplayName, item);
+					}
+				}
+			}
+			else
+			{
+				foreach (var item in data.LearningProgress.GapsProgress)
+				{
+					AddLearningProgressRow(sheet, row++, "", item);
+				}
+			}
+
+			FormatTable(sheet);
+		}
+
+		private static void AddLearningProgressRow(
+			IXLWorksheet sheet,
+			int row,
+			string studentName,
+			LearningProgressExportItem item)
+		{
+			sheet.Cell(row, 1).Value = studentName;
+			sheet.Cell(row, 2).Value = item.AspectName;
+			sheet.Cell(row, 3).Value = item.Topic;
+			sheet.Cell(row, 4).Value = item.PreviousGapScore?.ToString("0.##") ?? "-";
+			sheet.Cell(row, 5).Value = item.CurrentGapScore;
+			sheet.Cell(row, 6).Value = item.GapScoreDelta;
+			sheet.Cell(row, 7).Value = TranslateTrend(item.Trend);
+			sheet.Cell(row, 8).Value = TranslateKnowledgeLevel(item.Level);
+		}
+
+		private static void AddStudentsStatisticsSheet(XLWorkbook workbook, ReportExportData data)
+		{
+			if (data.StudentsStatistics.Count == 0)
+			{
+				return;
+			}
+
+			var sheet = workbook.Worksheets.Add("Студенты группы");
+			AddHeader(
+				sheet,
+				"Студент",
+				"UserId",
+				"Ошибки",
+				"Пробелы знаний",
+				"Средний показатель проблемности",
+				"Ошибки высокой серьезности",
+				"Основные проблемные темы",
+				"Основные типы ошибок");
+
+			var row = 2;
+			foreach (var student in data.StudentsStatistics)
+			{
+				sheet.Cell(row, 1).Value = student.DisplayName;
+				sheet.Cell(row, 2).Value = student.UserId;
+				sheet.Cell(row, 3).Value = student.TotalErrors;
+				sheet.Cell(row, 4).Value = student.TotalKnowledgeGaps;
+				sheet.Cell(row, 5).Value = student.AverageGapScore;
+				sheet.Cell(row, 6).Value = student.HighSeverityErrorsCount;
+				sheet.Cell(row, 7).Value = JoinKnowledgeGaps(student.TopKnowledgeGaps);
+				sheet.Cell(row, 8).Value = JoinErrorTypes(student.TopErrorTypes);
+				row++;
+			}
+
+			FormatTable(sheet);
 		}
 
 		private static void AddKnowledgeDistributionSheet(XLWorkbook workbook, ReportExportData data)
@@ -297,6 +413,20 @@ namespace AICourseTester.Services
 				});
 		}
 
+		private static void AddPdfFiltersBlock(ColumnDescriptor column, ReportExportData data)
+		{
+			if (!data.Filters.HasFilters)
+			{
+				return;
+			}
+
+			AddPdfSection(column, "Примененные фильтры", c =>
+			{
+				c.Item().Text($"Исключенные типы ошибок: {JoinIds(data.Filters.ExcludedErrorTypeIds)}");
+				c.Item().Text($"Исключенные аспекты знаний: {JoinIds(data.Filters.ExcludedKnowledgeAspectIds)}");
+			});
+		}
+
 		private static void AddPdfStatisticsBlock(ColumnDescriptor column, ReportExportData data)
 		{
 			AddPdfSection(column, "Общая статистика", c =>
@@ -316,6 +446,95 @@ namespace AICourseTester.Services
 					AddMetricCell(table, "Средний уровень пробелов", $"{data.AverageGapScore:0.##}%");
 					AddMetricCell(table, "Критические ошибки", data.HighSeverityErrorsCount.ToString());
 				});
+			});
+		}
+
+		private static void AddPdfLearningProgressBlock(ColumnDescriptor column, ReportExportData data)
+		{
+			AddPdfSection(column, data.IsGroupReport ? "Динамика обучения группы" : "Динамика обучения", c =>
+			{
+				if (!data.LearningProgress.HasData)
+				{
+					c.Item().Text("Недостаточно данных для оценки динамики.");
+					return;
+				}
+
+				c.Item().Table(table =>
+				{
+					table.ColumnsDefinition(columns =>
+					{
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+					});
+
+					AddMetricCell(table, "Предыдущий показатель", data.LearningProgress.PreviousAverageGapScore?.ToString("0.##") ?? "-");
+					AddMetricCell(table, "Текущий показатель", $"{data.LearningProgress.CurrentAverageGapScore:0.##}");
+					AddMetricCell(table, "Изменение", $"{data.LearningProgress.AverageGapScoreDelta:+0.##;-0.##;0}");
+					AddMetricCell(table, "Вывод", TranslateTrendSummary(data.LearningProgress.TrendSummary));
+				});
+
+				foreach (var item in data.LearningProgress.GapsProgress.Take(8))
+				{
+					c.Item().Text($"{item.AspectName} | {item.Topic}").Bold();
+					c.Item().Text($"Предыдущий: {FormatNullable(item.PreviousGapScore)}; текущий: {item.CurrentGapScore:0.##}; изменение: {item.GapScoreDelta:+0.##;-0.##;0}; тренд: {TranslateTrend(item.Trend)}; уровень: {TranslateKnowledgeLevel(item.Level)}")
+						.FontColor(Colors.Grey.Darken2);
+				}
+			});
+		}
+
+		private static void AddPdfStudentsStatisticsBlock(ColumnDescriptor column, ReportExportData data)
+		{
+			if (data.StudentsStatistics.Count == 0)
+			{
+				return;
+			}
+
+			AddPdfSection(column, "Статистика студентов группы", c =>
+			{
+				c.Item().Table(table =>
+				{
+					table.ColumnsDefinition(columns =>
+					{
+						columns.RelativeColumn(2);
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+						columns.RelativeColumn();
+					});
+
+					AddPdfTableHeaderCell(table, "Студент");
+					AddPdfTableHeaderCell(table, "Ошибки");
+					AddPdfTableHeaderCell(table, "Пробелы");
+					AddPdfTableHeaderCell(table, "Средний показатель");
+					AddPdfTableHeaderCell(table, "Серьезные ошибки");
+
+					foreach (var student in data.StudentsStatistics)
+					{
+						AddPdfTableCell(table, student.DisplayName);
+						AddPdfTableCell(table, student.TotalErrors.ToString());
+						AddPdfTableCell(table, student.TotalKnowledgeGaps.ToString());
+						AddPdfTableCell(table, $"{student.AverageGapScore:0.##}%");
+						AddPdfTableCell(table, student.HighSeverityErrorsCount.ToString());
+					}
+				});
+
+				foreach (var student in data.StudentsStatistics)
+				{
+					var gaps = JoinKnowledgeGaps(student.TopKnowledgeGaps);
+					var errors = JoinErrorTypes(student.TopErrorTypes);
+
+					if (!string.IsNullOrWhiteSpace(gaps))
+					{
+						c.Item().Text($"{student.DisplayName}. Проблемные темы: {gaps}").FontSize(9);
+					}
+
+					if (!string.IsNullOrWhiteSpace(errors))
+					{
+						c.Item().Text($"{student.DisplayName}. Типы ошибок: {errors}").FontSize(9);
+					}
+				}
 			});
 		}
 
@@ -448,6 +667,28 @@ namespace AICourseTester.Services
 				});
 		}
 
+		private static void AddPdfTableHeaderCell(TableDescriptor table, string text)
+		{
+			table.Cell()
+				.Border(1)
+				.BorderColor(Colors.Grey.Lighten2)
+				.Background(Colors.Grey.Lighten4)
+				.Padding(5)
+				.Text(text)
+				.FontSize(9)
+				.Bold();
+		}
+
+		private static void AddPdfTableCell(TableDescriptor table, string text)
+		{
+			table.Cell()
+				.Border(1)
+				.BorderColor(Colors.Grey.Lighten2)
+				.Padding(5)
+				.Text(string.IsNullOrWhiteSpace(text) ? "-" : text)
+				.FontSize(9);
+		}
+
 		private static void AddPdfProgressBar(ColumnDescriptor column, double percent, string color)
 		{
 			var safePercent = Math.Clamp(percent, 0, 100);
@@ -484,12 +725,15 @@ namespace AICourseTester.Services
 				Conclusion = GetString(summaryRoot, "conclusion", "Conclusion", ""),
 				RecommendationsCount = GetInt(summaryRoot, "recommendationsCount", "RecommendationsCount", 0),
 				TeacherActions = GetStringArray(summaryRoot, "teacherActions", "TeacherActions"),
+				Filters = GetReportFilters(summaryRoot),
+				LearningProgress = GetLearningProgress(analyticsRoot, "StudentProgress", "studentProgress", "GroupProgress", "groupProgress"),
 				KnowledgeGaps = knowledgeGaps,
 				TotalErrors = GetInt(analyticsRoot, "TotalErrors", "totalErrors", 0),
 				TotalKnowledgeGaps = GetInt(analyticsRoot, "TotalKnowledgeGaps", "totalKnowledgeGaps", 0),
 				AverageGapScore = GetDouble(analyticsRoot, "AverageGapScore", "averageGapScore", 0),
 				HighSeverityErrorsCount = GetInt(analyticsRoot, "HighSeverityErrorsCount", "highSeverityErrorsCount", 0),
 				ErrorTypes = GetErrorTypes(analyticsRoot),
+				StudentsStatistics = GetStudentsStatistics(analyticsRoot),
 				Recommendations = GetRecommendations(recommendations.RootElement)
 			};
 		}
@@ -583,6 +827,147 @@ namespace AICourseTester.Services
 				.ToList();
 		}
 
+		private static List<StudentStatisticsExportItem> GetStudentsStatistics(JsonElement analytics)
+		{
+			if (!TryGetProperty(analytics, out var students, "StudentsStatistics", "studentsStatistics") ||
+				students.ValueKind != JsonValueKind.Array)
+			{
+				return new List<StudentStatisticsExportItem>();
+			}
+
+			return students.EnumerateArray()
+				.Select(item => new StudentStatisticsExportItem
+				{
+					UserId = GetString(item, "UserId", "userId", ""),
+					UserName = GetString(item, "UserName", "userName", ""),
+					FullName = GetString(item, "FullName", "fullName", ""),
+					TotalErrors = GetInt(item, "TotalErrors", "totalErrors", 0),
+					TotalKnowledgeGaps = GetInt(item, "TotalKnowledgeGaps", "totalKnowledgeGaps", 0),
+					AverageGapScore = GetDouble(item, "AverageGapScore", "averageGapScore", 0),
+					HighSeverityErrorsCount = GetInt(item, "HighSeverityErrorsCount", "highSeverityErrorsCount", 0),
+					TopKnowledgeGaps = GetStudentKnowledgeGaps(item),
+					TopErrorTypes = GetStudentErrorTypes(item),
+					LearningProgress = GetLearningProgress(item, "LearningProgress", "learningProgress")
+				})
+				.ToList();
+		}
+
+		private static LearningProgressExportItem GetLearningProgress(JsonElement element, params string[] names)
+		{
+			if (!TryGetProperty(element, out var progress, names) || progress.ValueKind != JsonValueKind.Object)
+			{
+				return new LearningProgressExportItem();
+			}
+
+			return new LearningProgressExportItem
+			{
+				CurrentAverageGapScore = GetDouble(progress, "CurrentAverageGapScore", "currentAverageGapScore", 0),
+				PreviousAverageGapScore = GetNullableDouble(progress, "PreviousAverageGapScore", "previousAverageGapScore"),
+				AverageGapScoreDelta = GetDouble(progress, "AverageGapScoreDelta", "averageGapScoreDelta", 0),
+				ImprovedGapsCount = GetInt(progress, "ImprovedGapsCount", "improvedGapsCount", 0),
+				WorsenedGapsCount = GetInt(progress, "WorsenedGapsCount", "worsenedGapsCount", 0),
+				StableGapsCount = GetInt(progress, "StableGapsCount", "stableGapsCount", 0),
+				NewGapsCount = GetInt(progress, "NewGapsCount", "newGapsCount", 0),
+				TrendSummary = GetString(progress, "TrendSummary", "trendSummary", "InsufficientData"),
+				GapsProgress = GetLearningProgressItems(progress)
+			};
+		}
+
+		private static List<LearningProgressExportItem> GetLearningProgressItems(JsonElement progress)
+		{
+			if (!TryGetProperty(progress, out var items, "GapsProgress", "gapsProgress") ||
+				items.ValueKind != JsonValueKind.Array)
+			{
+				return new List<LearningProgressExportItem>();
+			}
+
+			return items.EnumerateArray()
+				.Select(item => new LearningProgressExportItem
+				{
+					KnowledgeAspectId = GetInt(item, "KnowledgeAspectId", "knowledgeAspectId", 0),
+					AspectName = GetString(item, "AspectName", "aspectName", $"Аспект #{GetInt(item, "KnowledgeAspectId", "knowledgeAspectId", 0)}"),
+					Topic = GetString(item, "Topic", "topic", "не указана"),
+					PreviousGapScore = GetNullableDouble(item, "PreviousGapScore", "previousGapScore"),
+					CurrentGapScore = GetDouble(item, "CurrentGapScore", "currentGapScore", 0),
+					GapScoreDelta = GetDouble(item, "GapScoreDelta", "gapScoreDelta", 0),
+					Trend = GetString(item, "Trend", "trend", "Stable"),
+					Level = GetString(item, "Level", "level", "Low")
+				})
+				.ToList();
+		}
+
+		private static List<ProblemExportItem> GetStudentKnowledgeGaps(JsonElement student)
+		{
+			if (!TryGetProperty(student, out var gaps, "TopKnowledgeGaps", "topKnowledgeGaps") ||
+				gaps.ValueKind != JsonValueKind.Array)
+			{
+				return new List<ProblemExportItem>();
+			}
+
+			return gaps.EnumerateArray()
+				.Select(item =>
+				{
+					var score = GetDouble(item, "AverageGapScore", "averageGapScore", GetDouble(item, "MaxGapScore", "maxGapScore", 0));
+
+					return new ProblemExportItem
+					{
+						AspectName = GetString(item, "AspectName", "aspectName", "Аспект не указан"),
+						TopicName = GetString(item, "TopicName", "topicName", "не указана"),
+						Score = score,
+						Level = GetLevel(score)
+					};
+				})
+				.ToList();
+		}
+
+		private static List<ErrorTypeExportItem> GetStudentErrorTypes(JsonElement student)
+		{
+			if (!TryGetProperty(student, out var errors, "TopErrorTypes", "topErrorTypes") ||
+				errors.ValueKind != JsonValueKind.Array)
+			{
+				return new List<ErrorTypeExportItem>();
+			}
+
+			return errors.EnumerateArray()
+				.Select(item => new ErrorTypeExportItem
+				{
+					Name = GetString(item, "Name", "name", GetString(item, "Code", "code", "Ошибка")),
+					Count = GetInt(item, "Count", "count", 0),
+					AverageSeverity = GetDouble(item, "AverageSeverity", "averageSeverity", 0)
+				})
+				.ToList();
+		}
+
+		private static ReportFiltersExportItem GetReportFilters(JsonElement summary)
+		{
+			if (!TryGetProperty(summary, out var filters, "filters", "Filters") ||
+				filters.ValueKind != JsonValueKind.Object)
+			{
+				return new ReportFiltersExportItem();
+			}
+
+			return new ReportFiltersExportItem
+			{
+				ExcludedErrorTypeIds = GetIntArray(filters, "excludedErrorTypeIds", "ExcludedErrorTypeIds"),
+				ExcludedKnowledgeAspectIds = GetIntArray(filters, "excludedKnowledgeAspectIds", "ExcludedKnowledgeAspectIds")
+			};
+		}
+
+		private static List<int> GetIntArray(JsonElement element, params string[] names)
+		{
+			if (!TryGetProperty(element, out var array, names) || array.ValueKind != JsonValueKind.Array)
+			{
+				return new List<int>();
+			}
+
+			return array.EnumerateArray()
+				.Where(item => item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out _))
+				.Select(item => item.GetInt32())
+				.Where(id => id > 0)
+				.Distinct()
+				.ToList();
+		}
+
 		private static List<string> GetStringArray(JsonElement element, params string[] names)
 		{
 			if (!TryGetProperty(element, out var array, names) || array.ValueKind != JsonValueKind.Array)
@@ -595,6 +980,29 @@ namespace AICourseTester.Services
 				.Select(item => item.GetString() ?? "")
 				.Where(value => !string.IsNullOrWhiteSpace(value))
 				.ToList();
+		}
+
+		private static string JoinKnowledgeGaps(List<ProblemExportItem> gaps)
+		{
+			return string.Join("; ", gaps
+				.Take(5)
+				.Select(gap => $"{gap.AspectName} ({gap.Score:0.##}%)")
+				.Where(value => !string.IsNullOrWhiteSpace(value)));
+		}
+
+		private static string JoinErrorTypes(List<ErrorTypeExportItem> errors)
+		{
+			return string.Join("; ", errors
+				.Take(5)
+				.Select(error => $"{error.Name} ({error.Count})")
+				.Where(value => !string.IsNullOrWhiteSpace(value)));
+		}
+
+		private static string JoinIds(List<int> ids)
+		{
+			return ids.Count == 0
+				? "не выбраны"
+				: string.Join(", ", ids.OrderBy(id => id));
 		}
 
 		private static string GetString(JsonElement element, string name1, string name2, string defaultValue)
@@ -624,6 +1032,18 @@ namespace AICourseTester.Services
 			return TryGetProperty(element, out var property, name1, name2) && property.TryGetDouble(out var value)
 				? value
 				: defaultValue;
+		}
+
+		private static double? GetNullableDouble(JsonElement element, string name1, string name2)
+		{
+			if (!TryGetProperty(element, out var property, name1, name2) ||
+				property.ValueKind == JsonValueKind.Null ||
+				property.ValueKind == JsonValueKind.Undefined)
+			{
+				return null;
+			}
+
+			return property.TryGetDouble(out var value) ? value : null;
 		}
 
 		private static DateTime GetDate(JsonElement element, string name1, string name2, DateTime defaultValue)
@@ -663,6 +1083,46 @@ namespace AICourseTester.Services
 			};
 		}
 
+		private static string TranslateKnowledgeLevel(string? level)
+		{
+			return level switch
+			{
+				"Critical" => "Критический",
+				"High" => "Высокий",
+				"Medium" => "Средний",
+				"Low" => "Низкий",
+				_ => level ?? "-"
+			};
+		}
+
+		private static string TranslateTrend(string? trend)
+		{
+			return trend switch
+			{
+				"Improved" => "Улучшение",
+				"Worsened" => "Ухудшение",
+				"New" => "Новый пробел",
+				"Stable" => "Без изменений",
+				_ => trend ?? "-"
+			};
+		}
+
+		private static string TranslateTrendSummary(string? trend)
+		{
+			return trend switch
+			{
+				"Improved" => "Показатель проблемности снизился",
+				"Worsened" => "Показатель проблемности увеличился",
+				"Stable" => "Существенных изменений не выявлено",
+				_ => "Недостаточно данных для оценки динамики"
+			};
+		}
+
+		private static string FormatNullable(double? value)
+		{
+			return value.HasValue ? value.Value.ToString("0.##") : "-";
+		}
+
 		private static string GetLevel(double score)
 		{
 			if (score > 75)
@@ -693,6 +1153,7 @@ namespace AICourseTester.Services
 		{
 			return level switch
 			{
+				"Critical" => Colors.Red.Medium,
 				"High" => Colors.Red.Medium,
 				"Medium" => Colors.Orange.Medium,
 				"Low" => Colors.Green.Medium,
@@ -741,9 +1202,13 @@ namespace AICourseTester.Services
 			public double AverageGapScore { get; set; }
 			public int HighSeverityErrorsCount { get; set; }
 			public List<string> TeacherActions { get; set; } = new();
+			public ReportFiltersExportItem Filters { get; set; } = new();
 			public List<ProblemExportItem> KnowledgeGaps { get; set; } = new();
 			public List<ErrorTypeExportItem> ErrorTypes { get; set; } = new();
 			public List<RecommendationExportItem> Recommendations { get; set; } = new();
+			public List<StudentStatisticsExportItem> StudentsStatistics { get; set; } = new();
+			public LearningProgressExportItem LearningProgress { get; set; } = new();
+			public bool IsGroupReport => string.Equals(ReportType, "Group", StringComparison.OrdinalIgnoreCase);
 			public List<KnowledgeDistributionItem> KnowledgeDistribution
 			{
 				get
@@ -769,6 +1234,60 @@ namespace AICourseTester.Services
 			public string TopicName { get; set; } = "";
 			public double Score { get; set; }
 			public string Level { get; set; } = "";
+		}
+
+		private class ReportFiltersExportItem
+		{
+			public List<int> ExcludedErrorTypeIds { get; set; } = new();
+			public List<int> ExcludedKnowledgeAspectIds { get; set; } = new();
+			public bool HasFilters => ExcludedErrorTypeIds.Count > 0 || ExcludedKnowledgeAspectIds.Count > 0;
+		}
+
+		private class StudentStatisticsExportItem
+		{
+			public string UserId { get; set; } = "";
+			public string UserName { get; set; } = "";
+			public string FullName { get; set; } = "";
+			public int TotalErrors { get; set; }
+			public int TotalKnowledgeGaps { get; set; }
+			public double AverageGapScore { get; set; }
+			public int HighSeverityErrorsCount { get; set; }
+			public List<ProblemExportItem> TopKnowledgeGaps { get; set; } = new();
+			public List<ErrorTypeExportItem> TopErrorTypes { get; set; } = new();
+			public LearningProgressExportItem LearningProgress { get; set; } = new();
+			public string DisplayName => !string.IsNullOrWhiteSpace(FullName)
+				? FullName
+				: !string.IsNullOrWhiteSpace(UserName)
+					? UserName
+					: UserId;
+		}
+
+		private class LearningProgressExportItem
+		{
+			public int KnowledgeAspectId { get; set; }
+			public string AspectName { get; set; } = "";
+			public string Topic { get; set; } = "";
+			public double? PreviousGapScore { get; set; }
+			public double CurrentGapScore { get; set; }
+			public double GapScoreDelta { get; set; }
+			public string Trend { get; set; } = "Stable";
+			public string Level { get; set; } = "Low";
+			public double? PreviousAverageGapScore { get; set; }
+			public double CurrentAverageGapScore { get; set; }
+			public double AverageGapScoreDelta { get; set; }
+			public int ImprovedGapsCount { get; set; }
+			public int WorsenedGapsCount { get; set; }
+			public int StableGapsCount { get; set; }
+			public int NewGapsCount { get; set; }
+			public string TrendSummary { get; set; } = "InsufficientData";
+			public List<LearningProgressExportItem> GapsProgress { get; set; } = new();
+			public bool HasData => GapsProgress.Count > 0 ||
+				PreviousAverageGapScore.HasValue ||
+				CurrentAverageGapScore > 0 ||
+				ImprovedGapsCount > 0 ||
+				WorsenedGapsCount > 0 ||
+				StableGapsCount > 0 ||
+				NewGapsCount > 0;
 		}
 
 		private class KnowledgeDistributionItem
