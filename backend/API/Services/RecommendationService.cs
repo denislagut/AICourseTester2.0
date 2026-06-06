@@ -27,6 +27,9 @@ namespace AICourseTester.Services
 			}
 
 			var gaps = await LoadKnowledgeGapsForUsersAsync(new[] { userId });
+			gaps = gaps
+				.Where(IsSignificantKnowledgeGap)
+				.ToList();
 			gaps = await ApplyRecommendationFiltersAsync(gaps, filters);
 			var aspects = await LoadKnowledgeAspectsAsync(gaps);
 
@@ -85,6 +88,9 @@ namespace AICourseTester.Services
 			}
 
 			var gaps = await LoadKnowledgeGapsForUsersAsync(userIds);
+			gaps = gaps
+				.Where(IsSignificantKnowledgeGap)
+				.ToList();
 			gaps = await ApplyRecommendationFiltersAsync(gaps, filters);
 			var aspects = await LoadKnowledgeAspectsAsync(gaps);
 
@@ -284,6 +290,12 @@ namespace AICourseTester.Services
 			return gaps
 				.Where(gap => !excludedAspectIds.Contains(gap.KnowledgeAspectId))
 				.ToList();
+		}
+
+		private static bool IsSignificantKnowledgeGap(KnowledgeGap gap)
+		{
+			return string.Equals(gap.Level, "High", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(gap.Level, "Critical", StringComparison.OrdinalIgnoreCase);
 		}
 
 		private async Task<HashSet<int>> BuildExcludedKnowledgeAspectIdsAsync(AnalyticsFilterDTO? filters)

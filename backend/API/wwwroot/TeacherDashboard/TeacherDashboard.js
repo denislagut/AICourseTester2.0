@@ -997,9 +997,9 @@ function renderSummary(summary) {
 
 function renderStudentAnalytics(analytics, recommendations) {
     const content = document.getElementById('student-content');
-    content.innerHTML = `
-        ${renderAnalyticsFilterNotice()}
-        ${renderPanel('Статистика студента', renderDetails([
+    const studentProgress = getStudentLearningProgress(analytics);
+    const studentStatistics = `
+        ${renderDetails([
             ['Идентификатор пользователя', analytics.userId],
             ['Логин', analytics.userName],
             ['ФИО', analytics.fullName],
@@ -1008,7 +1008,13 @@ function renderStudentAnalytics(analytics, recommendations) {
             ['Количество пробелов', analytics.totalKnowledgeGaps],
             ['Средний показатель пробела', analytics.averageGapScore],
             ['Серьёзные ошибки', analytics.highSeverityErrorsCount]
-        ]))}
+        ])}
+        ${renderLearningProgressSection('Динамика обучения', studentProgress)}
+    `;
+
+    content.innerHTML = `
+        ${renderAnalyticsFilterNotice()}
+        ${renderPanel('Статистика студента', studentStatistics)}
         ${renderPanel('Пробелы в знаниях', renderKnowledgeGaps(analytics.topKnowledgeGaps))}
         ${renderPanel('Рекомендации', renderRecommendations(recommendations))}
     `;
@@ -1017,10 +1023,9 @@ function renderStudentAnalytics(analytics, recommendations) {
 function renderGroupAnalytics(analytics, recommendations) {
     const content = document.getElementById('group-content');
     const studentsStatistics = analytics.studentsStatistics || analytics.StudentsStatistics || [];
-
-    content.innerHTML = `
-        ${renderAnalyticsFilterNotice()}
-        ${renderPanel('Статистика группы', renderDetails([
+    const groupProgress = getGroupLearningProgress(analytics);
+    const groupStatistics = `
+        ${renderDetails([
             ['Идентификатор группы', analytics.groupId],
             ['Название группы', analytics.groupName],
             ['Количество студентов', analytics.studentsCount],
@@ -1028,7 +1033,13 @@ function renderGroupAnalytics(analytics, recommendations) {
             ['Количество пробелов', analytics.totalKnowledgeGaps],
             ['Средний показатель пробела', analytics.averageGapScore],
             ['Серьёзные ошибки', analytics.highSeverityErrorsCount]
-        ]))}
+        ])}
+        ${renderLearningProgressSection('Динамика обучения группы', groupProgress)}
+    `;
+
+    content.innerHTML = `
+        ${renderAnalyticsFilterNotice()}
+        ${renderPanel('Статистика группы', groupStatistics)}
         ${renderPanel('Статистика студентов группы', renderGroupStudentsStatistics(studentsStatistics), 'panel--wide')}
         ${renderPanel('Рекомендации группы', renderRecommendations(recommendations))}
     `;
@@ -1055,6 +1066,35 @@ function renderPanel(title, body, extraClass = '') {
             ${body}
         </section>
     `;
+}
+
+function renderLearningProgressSection(title, progress) {
+    return `
+        <section class="learning-progress-section">
+            <h4>${escapeHtml(title)}</h4>
+            ${renderLearningProgress(progress)}
+        </section>
+    `;
+}
+
+function getStudentLearningProgress(analytics) {
+    return analytics?.studentProgress ||
+        analytics?.StudentProgress ||
+        analytics?.learningProgress ||
+        analytics?.LearningProgress ||
+        null;
+}
+
+function getGroupLearningProgress(analytics) {
+    return analytics?.groupProgress ||
+        analytics?.GroupProgress ||
+        analytics?.learningProgress ||
+        analytics?.LearningProgress ||
+        null;
+}
+
+function getAnyLearningProgress(analytics) {
+    return getStudentLearningProgress(analytics) || getGroupLearningProgress(analytics);
 }
 
 function renderDetails(rows) {
@@ -1090,6 +1130,75 @@ function renderKnowledgeGaps(gaps) {
     `;
 }
 
+function renderLearningProgress(progress, compact = false) {
+    if (!progress) {
+        return '<p class="empty-state">Недостаточно данных для оценки динамики обучения</p>';
+    }
+
+    const gapsProgress = progress.gapsProgress || progress.GapsProgress || [];
+    const hasData = gapsProgress.length > 0 ||
+        progress.previousAverageGapScore != null ||
+        progress.PreviousAverageGapScore != null ||
+        Number(progress.currentAverageGapScore ?? progress.CurrentAverageGapScore ?? 0) > 0;
+
+    if (!hasData) {
+        return '<p class="empty-state">Недостаточно данных для оценки динамики обучения</p>';
+    }
+
+    const current = progress.currentAverageGapScore ?? progress.CurrentAverageGapScore;
+    const previous = progress.previousAverageGapScore ?? progress.PreviousAverageGapScore;
+    const delta = progress.averageGapScoreDelta ?? progress.AverageGapScoreDelta;
+    const trendSummary = progress.trendSummary || progress.TrendSummary;
+
+    return `
+        <div class="learning-progress">
+            <div class="student-stat-card__metrics">
+                ${renderStudentStatMetric('Текущий показатель', current)}
+                ${renderStudentStatMetric('Предыдущий показатель', previous)}
+                ${renderStudentStatMetric('Изменение', formatSignedValue(delta))}
+                ${renderStudentStatMetric('Улучшено', progress.improvedGapsCount ?? progress.ImprovedGapsCount)}
+                ${renderStudentStatMetric('Ухудшилось', progress.worsenedGapsCount ?? progress.WorsenedGapsCount)}
+                ${renderStudentStatMetric('Без изменений', progress.stableGapsCount ?? progress.StableGapsCount)}
+                ${renderStudentStatMetric('Новые пробелы', progress.newGapsCount ?? progress.NewGapsCount)}
+            </div>
+            <p class="learning-progress__summary">${escapeHtml(buildLearningProgressConclusion(trendSummary, delta))}</p>
+            ${compact ? '' : renderLearningProgressGaps(gapsProgress)}
+        </div>
+    `;
+}
+
+function renderLearningProgressGaps(gapsProgress) {
+    if (!Array.isArray(gapsProgress) || gapsProgress.length === 0) {
+        return '<p class="empty-state">Недостаточно данных для оценки динамики обучения</p>';
+    }
+
+    return `
+        <div class="gap-list">
+            ${gapsProgress.map(item => {
+                const previous = item.previousGapScore ?? item.PreviousGapScore;
+                const current = item.currentGapScore ?? item.CurrentGapScore;
+                const delta = item.gapScoreDelta ?? item.GapScoreDelta;
+                const trend = item.trend || item.Trend;
+                const level = item.level || item.Level;
+
+                return `
+                    <article class="gap-row">
+                        <div class="gap-row__title">${escapeHtml(item.aspectName || item.AspectName || `Аспект #${item.knowledgeAspectId || item.KnowledgeAspectId}`)}</div>
+                        <div class="gap-row__meta">
+                            Тема: ${escapeHtml(item.topic || item.Topic || 'не указана')}<br>
+                            Предыдущий показатель: ${formatValue(previous)} |
+                            Текущий показатель: ${formatValue(current)} |
+                            Изменение: ${formatSignedValue(delta)}<br>
+                            Тренд: ${escapeHtml(translateTrend(trend))} |
+                            Уровень: ${escapeHtml(translateRiskLevel(level))}
+                        </div>
+                    </article>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
 function renderGroupStudentsStatistics(students) {
     if (!Array.isArray(students) || students.length === 0) {
         return '<p class="empty-state">Статистика студентов группы пока не найдена.</p>';
@@ -1100,6 +1209,7 @@ function renderGroupStudentsStatistics(students) {
             ${students.map(student => {
                 const gaps = student.topKnowledgeGaps || student.TopKnowledgeGaps || [];
                 const errors = student.topErrorTypes || student.TopErrorTypes || [];
+                const learningProgress = student.learningProgress || student.LearningProgress || null;
 
                 return `
                     <article class="student-stat-card">
@@ -1114,10 +1224,15 @@ function renderGroupStudentsStatistics(students) {
                             ${renderStudentStatMetric('Пробелы знаний', student.totalKnowledgeGaps ?? student.TotalKnowledgeGaps)}
                             ${renderStudentStatMetric('Средний показатель', student.averageGapScore ?? student.AverageGapScore)}
                             ${renderStudentStatMetric('Серьёзные ошибки', student.highSeverityErrorsCount ?? student.HighSeverityErrorsCount)}
+                            ${renderStudentStatMetric('Изменение', formatSignedValue(student.averageGapScoreDelta ?? student.AverageGapScoreDelta))}
                         </div>
                         <details class="student-stat-details">
                             <summary>Подробнее</summary>
                             <div class="student-stat-details__content">
+                                <section>
+                                    <h5>Динамика обучения</h5>
+                                    ${renderLearningProgress(learningProgress, true)}
+                                </section>
                                 <section>
                                     <h5>Проблемные темы</h5>
                                     ${renderStudentTopKnowledgeGaps(gaps)}
@@ -1455,6 +1570,7 @@ function renderReportAnalytics(analytics) {
     const topGaps = parseJson(analytics.TopKnowledgeGapsJson || analytics.topKnowledgeGapsJson) || [];
     const topErrors = parseJson(analytics.TopErrorTypesJson || analytics.topErrorTypesJson) || [];
     const studentsStatistics = analytics.StudentsStatistics || analytics.studentsStatistics || [];
+    const learningProgress = getAnyLearningProgress(analytics);
 
     return `
         <div class="report-block">
@@ -1469,6 +1585,10 @@ function renderReportAnalytics(analytics) {
                 ${renderReportMetric('Количество критических ошибок', analytics.HighSeverityErrorsCount ?? analytics.highSeverityErrorsCount)}
             </div>
             ${renderGapScoreIndicator(analytics.AverageGapScore ?? analytics.averageGapScore)}
+        </div>
+        <div class="report-block">
+            <h4>${studentsStatistics.length > 0 ? 'Динамика обучения группы' : 'Динамика обучения'}</h4>
+            ${renderLearningProgress(learningProgress)}
         </div>
         ${renderReportGroupStudentsStatistics(studentsStatistics)}
         <div class="report-block">
@@ -1757,6 +1877,23 @@ function formatValue(value) {
     return String(value);
 }
 
+function formatSignedValue(value) {
+    if (value === null || value === undefined || value === '') {
+        return '-';
+    }
+
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) {
+        return String(value);
+    }
+
+    if (numericValue > 0) {
+        return `+${numericValue.toFixed(2).replace(/\.?0+$/, '')}`;
+    }
+
+    return numericValue.toFixed(2).replace(/\.?0+$/, '');
+}
+
 function priorityClass(priority) {
     const normalized = String(priority || '').toLowerCase();
 
@@ -1802,10 +1939,43 @@ function translateReportType(reportType) {
 function translateRiskLevel(level) {
     const normalized = String(level || '').toLowerCase();
 
+    if (normalized === 'critical') return 'Критический';
     if (normalized === 'high') return 'Высокий';
     if (normalized === 'medium') return 'Средний';
     if (normalized === 'low') return 'Низкий';
     return '-';
+}
+
+function translateTrend(trend) {
+    const normalized = String(trend || '').toLowerCase();
+
+    if (normalized === 'improved') return 'Улучшение';
+    if (normalized === 'worsened') return 'Ухудшение';
+    if (normalized === 'new') return 'Новый пробел';
+    if (normalized === 'stable') return 'Без изменений';
+    return formatValue(trend);
+}
+
+function buildLearningProgressConclusion(trendSummary, delta) {
+    const numericDelta = Number(delta);
+    const formattedDelta = Number.isNaN(numericDelta)
+        ? ''
+        : ` на ${Math.abs(numericDelta).toFixed(2).replace(/\.?0+$/, '')}`;
+    const normalized = String(trendSummary || '').toLowerCase();
+
+    if (normalized === 'improved') {
+        return `Показатель проблемности снизился${formattedDelta} — наблюдается улучшение`;
+    }
+
+    if (normalized === 'worsened') {
+        return `Показатель проблемности увеличился${formattedDelta} — требуется дополнительная работа`;
+    }
+
+    if (normalized === 'stable') {
+        return 'Существенных изменений не выявлено';
+    }
+
+    return 'Недостаточно данных для оценки динамики';
 }
 
 function formatDate(value) {

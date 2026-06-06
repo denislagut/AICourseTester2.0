@@ -323,6 +323,38 @@
     font-size: 18px;
 }
 
+.learning-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.learning-progress-section {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #E8E8E8;
+}
+
+.learning-progress-section h4 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.learning-progress-section .student-stat-card__metrics {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.learning-progress__summary {
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid #E8E8E8;
+    border-radius: 8px;
+    background: #FAFAFA;
+    color: #222222;
+    font-weight: 600;
+}
+
 .student-stat-details {
     margin-top: 10px;
 }

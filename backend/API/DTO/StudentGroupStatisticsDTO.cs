@@ -11,5 +11,10 @@ namespace AICourseTester.DTO
 		public int HighSeverityErrorsCount { get; set; }
 		public List<TopErrorTypeDTO> TopErrorTypes { get; set; } = new();
 		public List<TopKnowledgeGapDTO> TopKnowledgeGaps { get; set; } = new();
+		public double CurrentAverageGapScore { get; set; }
+		public double? PreviousAverageGapScore { get; set; }
+		public double AverageGapScoreDelta { get; set; }
+		public string TrendSummary { get; set; } = "InsufficientData";
+		public LearningProgressDTO LearningProgress { get; set; } = new();
 	}
 }

@@ -70,7 +70,7 @@ namespace AICourseTester.Services
 				GroupId = groupId,
 				Title = "Отчет по студенту",
 				SummaryJson = JsonSerializer.Serialize(BuildReportSummary("Student", "Отчет по студенту", userId, groupId, reportSnapshot, recommendations, createdAt, filters)),
-				AnalyticsJson = JsonSerializer.Serialize(MapSnapshot(reportSnapshot)),
+				AnalyticsJson = JsonSerializer.Serialize(MapSnapshotWithProgress(reportSnapshot, analytics.StudentProgress)),
 				RecommendationsJson = JsonSerializer.Serialize(recommendations),
 				Format = "Json",
 				FilePath = null,
@@ -122,7 +122,7 @@ namespace AICourseTester.Services
 				GroupId = groupId,
 				Title = "Отчет по группе",
 				SummaryJson = JsonSerializer.Serialize(BuildReportSummary("Group", "Отчет по группе", null, groupId, reportSnapshot, recommendations, createdAt, filters)),
-				AnalyticsJson = JsonSerializer.Serialize(MapSnapshotWithStudents(reportSnapshot, analytics.StudentsStatistics)),
+				AnalyticsJson = JsonSerializer.Serialize(MapSnapshotWithStudents(reportSnapshot, analytics.StudentsStatistics, analytics.GroupProgress)),
 				RecommendationsJson = JsonSerializer.Serialize(recommendations),
 				Format = "Json",
 				FilePath = null,
@@ -293,9 +293,11 @@ namespace AICourseTester.Services
 				.Include(e => e.AlphaBeta)
 				.Include(e => e.FifteenPuzzle)
 				.Where(e =>
-					(e.AnalysisRun != null && userIds.Contains(e.AnalysisRun.UserId)) ||
+					e.IsPrimary &&
+					e.IsSummary != true &&
+					((e.AnalysisRun != null && userIds.Contains(e.AnalysisRun.UserId)) ||
 					(e.AlphaBeta != null && userIds.Contains(e.AlphaBeta.UserId)) ||
-					(e.FifteenPuzzle != null && userIds.Contains(e.FifteenPuzzle.UserId)))
+					(e.FifteenPuzzle != null && userIds.Contains(e.FifteenPuzzle.UserId))))
 				.ToListAsync();
 
 			var gaps = await _context.KnowledgeGaps
@@ -589,6 +591,31 @@ namespace AICourseTester.Services
 			};
 		}
 
+		private static object MapSnapshotWithProgress(
+			AnalyticsSnapshot snapshot,
+			LearningProgressDTO? learningProgress)
+		{
+			var mapped = MapSnapshot(snapshot);
+
+			return new
+			{
+				mapped.Id,
+				mapped.ScopeType,
+				mapped.UserId,
+				mapped.GroupId,
+				mapped.TotalStudents,
+				mapped.TotalGroups,
+				mapped.TotalErrors,
+				mapped.TotalKnowledgeGaps,
+				mapped.AverageGapScore,
+				mapped.HighSeverityErrorsCount,
+				mapped.TopErrorTypesJson,
+				mapped.TopKnowledgeGapsJson,
+				mapped.CreatedAt,
+				StudentProgress = learningProgress
+			};
+		}
+
 		private static AnalyticsSnapshot BuildStudentSnapshot(StudentAnalyticsDTO analytics, DateTime createdAt)
 		{
 			return new AnalyticsSnapshot
@@ -625,7 +652,8 @@ namespace AICourseTester.Services
 
 		private static object MapSnapshotWithStudents(
 			AnalyticsSnapshot snapshot,
-			List<StudentGroupStatisticsDTO> studentsStatistics)
+			List<StudentGroupStatisticsDTO> studentsStatistics,
+			LearningProgressDTO? groupProgress)
 		{
 			var mapped = MapSnapshot(snapshot);
 
@@ -644,6 +672,7 @@ namespace AICourseTester.Services
 				mapped.TopErrorTypesJson,
 				mapped.TopKnowledgeGapsJson,
 				mapped.CreatedAt,
+				GroupProgress = groupProgress,
 				StudentsStatistics = studentsStatistics
 			};
 		}
