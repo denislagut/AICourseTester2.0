@@ -18,10 +18,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         profileLink.href = isTeacher ? '/ProfileTeacherPage/ProfileTeacherPage.html' : '/ProfileStudentPage/ProfileStudentPage.html';
     }
 
-    const adminLink = document.querySelector('.button_settings');
-    if (adminLink && !isTeacher) {
-        adminLink.style.display = 'none';
-    }
+    updateTeacherMenuItems(isTeacher);
 
     try {
         const urlParams = new URLSearchParams(window.location.search);
@@ -100,6 +97,22 @@ document.addEventListener('DOMContentLoaded', async function () {
         window.location.href = userId ? "/ProfileTeacherPage/ProfileTeacherPage.html" : "/ProfileStudentPage/ProfileStudentPage.html";
     }
 });
+
+function updateTeacherMenuItems(isTeacher) {
+    const teacherMenuItems = document.querySelectorAll(
+        '.teacher-only-menu-item, ' +
+        '.profile-tooltip__dropdown-content a[href="/TeacherDashboard/TeacherDashboard.html"], ' +
+        '.profile-tooltip__dropdown-content a[href="/AdminPage/AdminPage.html"]'
+    );
+
+    teacherMenuItems.forEach(item => {
+        if (isTeacher) {
+            item.style.display = 'block';
+        } else {
+            item.remove();
+        }
+    });
+}
 
 function getNodeId(node) {
     return node?.id ?? node?.Id;

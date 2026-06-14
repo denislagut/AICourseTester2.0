@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace AICourseTester.Controllers
 {
-	[Authorize]
+	[Authorize(Roles = "Administrator")]
 	[Route("api/[controller]")]
 	[ApiController]
 	public class ReportsController : ControllerBase

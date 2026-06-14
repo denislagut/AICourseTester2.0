@@ -19,10 +19,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         profileLink.href = isTeacher ? '/ProfileTeacherPage/ProfileTeacherPage.html' : '/ProfileStudentPage/ProfileStudentPage.html';
     }
 
-    const adminLink = document.querySelector('.button_settings');
-    if (adminLink && !isTeacher) {
-        adminLink.style.display = 'none';
-    }
+    document.querySelectorAll('.teacher-only-menu-item').forEach(item => {
+        if (isTeacher) {
+            item.style.display = 'block';
+        } else {
+            item.remove();
+        }
+    });
 
     let userId = null;
 

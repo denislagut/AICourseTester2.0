@@ -262,10 +262,10 @@ namespace AICourseTester.Services
 
 			if (gaps.Count > 0)
 			{
-				return gaps;
+				return SelectLatestKnowledgeGaps(gaps);
 			}
 
-			return await _context.KnowledgeGaps
+			var legacyGaps = await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
 				.Include(g => g.AlphaBeta)
@@ -274,6 +274,28 @@ namespace AICourseTester.Services
 					(g.AlphaBeta != null && userIds.Contains(g.AlphaBeta.UserId)) ||
 					(g.FifteenPuzzle != null && userIds.Contains(g.FifteenPuzzle.UserId)))
 				.ToListAsync();
+
+			return SelectLatestKnowledgeGaps(legacyGaps);
+		}
+
+		private static List<KnowledgeGap> SelectLatestKnowledgeGaps(IEnumerable<KnowledgeGap> gaps)
+		{
+			return gaps
+				.GroupBy(g => new
+				{
+					g.UserId,
+					g.TaskType,
+					g.AlphaBetaId,
+					g.FifteenPuzzleId,
+					g.KnowledgeAspectId
+				})
+				.Select(group => group
+					.OrderByDescending(g => g.AnalysisRunId.HasValue)
+					.ThenByDescending(g => g.CreatedAt)
+					.ThenByDescending(g => g.AnalysisRunId ?? 0)
+					.ThenByDescending(g => g.Id)
+					.First())
+				.ToList();
 		}
 
 		private async Task<List<KnowledgeGap>> ApplyRecommendationFiltersAsync(

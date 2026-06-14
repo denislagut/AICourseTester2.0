@@ -6,7 +6,7 @@ let analyticsFilters = { excludedErrorTypeIds: [], excludedKnowledgeAspectIds: [
 const COMPARISON_TIME_OFFSET_HOURS = 6;
 
 document.addEventListener('DOMContentLoaded', () => {
-    if (!restrictAccess()) return;
+    if (!restrictTeacherAccess()) return;
 
     const userFullName = sessionStorage.getItem('userFullName') || 'Иванов И. И.';
     document.querySelector('.profile-tooltip_username').textContent = userFullName;
