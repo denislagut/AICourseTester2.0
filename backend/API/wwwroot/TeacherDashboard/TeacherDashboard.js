@@ -3,6 +3,7 @@ const selectedStudentIds = { student: '', report: '', compare: '' };
 let activeCompareDateInput = null;
 let filterDictionaries = { errorTypes: [], knowledgeAspects: [] };
 let analyticsFilters = { excludedErrorTypeIds: [], excludedKnowledgeAspectIds: [] };
+let knowledgeManagementState = { errorTypes: [], aspects: [], links: [] };
 const COMPARISON_TIME_OFFSET_HOURS = 6;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -36,11 +37,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reports-content').addEventListener('click', downloadReportFile);
     document.getElementById('apply-filters-button').addEventListener('click', applyAnalyticsFilters);
     document.getElementById('reset-filters-button').addEventListener('click', resetAnalyticsFilters);
+    document.getElementById('knowledge-aspect-form').addEventListener('submit', saveAspect);
+    document.getElementById('clear-knowledge-aspect-form').addEventListener('click', clearAspectForm);
+    document.getElementById('error-type-aspect-form').addEventListener('submit', addErrorTypeAspectLink);
+    document.getElementById('knowledge-aspects-list').addEventListener('click', handleAspectListClick);
+    document.getElementById('knowledge-links-table-body').addEventListener('click', handleKnowledgeLinkTableClick);
     document.getElementById('profile-tooltip__button-logout').addEventListener('click', logout);
 
     loadSummary();
     loadDashboardGroups();
     loadFilterDictionaries();
+    loadKnowledgeManagementData();
 });
 
 async function authorizedGet(path) {
@@ -102,6 +109,74 @@ async function authorizedPost(path, body = null) {
         const refreshedToken = await refreshToken();
         if (refreshedToken) {
             return authorizedPost(path, body);
+        }
+    }
+
+    if (!response.ok) {
+        throw new Error(await getResponseErrorMessage(response, url));
+    }
+
+    return readJsonResponse(response, url);
+}
+
+async function authorizedPut(path, body = null) {
+    let authtoken = Cookies.get('.AspNetCore.Identity.Application');
+
+    if (!authtoken) {
+        throw new Error('Токен авторизации отсутствует');
+    }
+
+    if (isTokenExpired(authtoken)) {
+        authtoken = await refreshToken();
+    }
+
+    const url = buildApiUrl(path);
+    const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authtoken}`
+        },
+        body: body ? JSON.stringify(body) : null
+    });
+
+    if (response.status === 401) {
+        const refreshedToken = await refreshToken();
+        if (refreshedToken) {
+            return authorizedPut(path, body);
+        }
+    }
+
+    if (!response.ok) {
+        throw new Error(await getResponseErrorMessage(response, url));
+    }
+
+    return readJsonResponse(response, url);
+}
+
+async function authorizedDelete(path) {
+    let authtoken = Cookies.get('.AspNetCore.Identity.Application');
+
+    if (!authtoken) {
+        throw new Error('Токен авторизации отсутствует');
+    }
+
+    if (isTokenExpired(authtoken)) {
+        authtoken = await refreshToken();
+    }
+
+    const url = buildApiUrl(path);
+    const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+            Authorization: `Bearer ${authtoken}`
+        }
+    });
+
+    if (response.status === 401) {
+        const refreshedToken = await refreshToken();
+        if (refreshedToken) {
+            return authorizedDelete(path);
         }
     }
 
@@ -289,6 +364,339 @@ async function loadFilterDictionaries() {
         document.getElementById('error-type-filter-list').innerHTML = '<span class="empty-state">Типы ошибок не загружены.</span>';
         document.getElementById('knowledge-aspect-filter-list').innerHTML = '<span class="empty-state">Аспекты знаний не загружены.</span>';
     }
+}
+
+async function loadKnowledgeManagementData() {
+    const status = document.getElementById('knowledge-management-status');
+
+    try {
+        status.textContent = 'Загрузка...';
+        status.classList.remove('error');
+
+        const [errorTypes, aspects, links] = await Promise.all([
+            loadErrorTypesForManagement(),
+            loadAspectsForManagement(),
+            loadErrorTypeAspectLinks()
+        ]);
+
+        knowledgeManagementState = {
+            errorTypes: Array.isArray(errorTypes) ? errorTypes : [],
+            aspects: Array.isArray(aspects) ? aspects : [],
+            links: Array.isArray(links) ? links : []
+        };
+
+        renderKnowledgeManagementData();
+        status.textContent = '';
+    } catch (error) {
+        setError(status, `Не удалось загрузить управление знаниями: ${error.message}`);
+    }
+}
+
+async function loadErrorTypesForManagement() {
+    return authorizedGet('/KnowledgeManagement/ErrorTypes');
+}
+
+async function loadAspectsForManagement() {
+    return authorizedGet('/KnowledgeManagement/Aspects');
+}
+
+async function loadErrorTypeAspectLinks() {
+    return authorizedGet('/KnowledgeManagement/ErrorTypeAspects');
+}
+
+function renderKnowledgeManagementData() {
+    renderManagementErrorTypeSelect();
+    renderManagementAspectSelect();
+    renderAspectsList();
+    renderErrorTypeAspectLinks();
+}
+
+function renderManagementErrorTypeSelect() {
+    const select = document.getElementById('management-error-type-select');
+    select.innerHTML = '<option value="">Выберите тип ошибки</option>';
+
+    if (knowledgeManagementState.errorTypes.length === 0) {
+        select.innerHTML = '<option value="">Типы ошибок не найдены</option>';
+        select.disabled = true;
+        return;
+    }
+
+    select.disabled = false;
+    select.innerHTML += knowledgeManagementState.errorTypes.map(errorType => {
+        const id = errorType.id ?? errorType.Id;
+        const code = errorType.code ?? errorType.Code ?? '';
+        const name = errorType.name ?? errorType.Name ?? `Тип ошибки #${id}`;
+
+        return `<option value="${escapeHtml(id)}">${escapeHtml(code ? `${name} (${code})` : name)}</option>`;
+    }).join('');
+}
+
+function renderManagementAspectSelect() {
+    const select = document.getElementById('management-aspect-select');
+    select.innerHTML = '<option value="">Выберите аспект</option>';
+
+    if (knowledgeManagementState.aspects.length === 0) {
+        select.innerHTML = '<option value="">Аспекты не найдены</option>';
+        select.disabled = true;
+        return;
+    }
+
+    select.disabled = false;
+    select.innerHTML += knowledgeManagementState.aspects.map(aspect => {
+        const id = aspect.id ?? aspect.Id;
+        const name = aspect.name ?? aspect.Name ?? `Аспект #${id}`;
+        const topic = aspect.topicName ?? aspect.TopicName;
+
+        return `<option value="${escapeHtml(id)}">${escapeHtml(topic ? `${topic}: ${name}` : name)}</option>`;
+    }).join('');
+}
+
+function renderAspectsList() {
+    const container = document.getElementById('knowledge-aspects-list');
+
+    if (knowledgeManagementState.aspects.length === 0) {
+        container.innerHTML = '<span class="empty-state">Аспекты знаний пока не созданы.</span>';
+        return;
+    }
+
+    container.innerHTML = knowledgeManagementState.aspects.map(aspect => {
+        const id = aspect.id ?? aspect.Id;
+        const name = aspect.name ?? aspect.Name ?? `Аспект #${id}`;
+        const description = aspect.description ?? aspect.Description ?? '';
+        const topic = aspect.topicName ?? aspect.TopicName ?? 'Тема не указана';
+        const isActive = aspect.isActive ?? aspect.IsActive;
+
+        return `
+            <article class="aspect-item">
+                <div>
+                    <strong>${escapeHtml(name)}</strong>
+                    <span>${escapeHtml(topic)}</span>
+                    ${description ? `<small>${escapeHtml(description)}</small>` : ''}
+                    <em>${isActive ? 'Активен' : 'Неактивен'}</em>
+                </div>
+                <button type="button" class="button-secondary aspect-edit-button" data-aspect-id="${escapeHtml(id)}">Изменить</button>
+            </article>
+        `;
+    }).join('');
+}
+
+function renderErrorTypeAspectLinks() {
+    const tbody = document.getElementById('knowledge-links-table-body');
+
+    if (knowledgeManagementState.links.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6">Связи пока не созданы.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = knowledgeManagementState.links.map(link => {
+        const id = link.id ?? link.Id;
+        const errorTypeName = link.errorTypeName ?? link.ErrorTypeName ?? 'Тип ошибки';
+        const errorTypeCode = link.errorTypeCode ?? link.ErrorTypeCode ?? '-';
+        const aspectName = link.knowledgeAspectName ?? link.KnowledgeAspectName ?? 'Аспект знаний';
+        const topicName = link.topicName ?? link.TopicName ?? '-';
+        const weight = link.weight ?? link.Weight ?? 1;
+
+        return `
+            <tr>
+                <td>${escapeHtml(errorTypeName)}</td>
+                <td>${escapeHtml(errorTypeCode)}</td>
+                <td>${escapeHtml(aspectName)}</td>
+                <td>${escapeHtml(topicName)}</td>
+                <td>
+                    <input class="knowledge-link-weight-input" type="number" min="0.01" max="1" step="0.01" value="${escapeHtml(weight)}" data-link-id="${escapeHtml(id)}">
+                </td>
+                <td>
+                    <div class="button-row knowledge-link-actions">
+                        <button type="button" class="button-secondary knowledge-link-save-button" data-link-id="${escapeHtml(id)}">Сохранить</button>
+                        <button type="button" class="button-secondary knowledge-link-delete-button" data-link-id="${escapeHtml(id)}">Удалить</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function saveAspect(event) {
+    event.preventDefault();
+
+    const status = document.getElementById('knowledge-management-status');
+    const aspectId = document.getElementById('knowledge-aspect-id').value;
+    const payload = {
+        name: document.getElementById('knowledge-aspect-name').value.trim(),
+        description: document.getElementById('knowledge-aspect-description').value.trim() || null,
+        topicName: document.getElementById('knowledge-aspect-topic').value.trim() || null,
+        isActive: document.getElementById('knowledge-aspect-active').checked
+    };
+
+    if (!payload.name) {
+        alert('Введите название аспекта знаний');
+        return;
+    }
+
+    try {
+        status.textContent = 'Сохранение аспекта...';
+        status.classList.remove('error');
+
+        if (aspectId) {
+            await authorizedPut(`/KnowledgeManagement/Aspects/${encodeURIComponent(aspectId)}`, payload);
+            status.textContent = 'Аспект знаний обновлён.';
+        } else {
+            await authorizedPost('/KnowledgeManagement/Aspects', payload);
+            status.textContent = 'Аспект знаний создан.';
+        }
+
+        clearAspectForm();
+        await refreshKnowledgeAspectsAndLinks();
+    } catch (error) {
+        alert(error.message || 'Не удалось сохранить аспект знаний');
+        setError(status, error.message || 'Не удалось сохранить аспект знаний');
+    }
+}
+
+function clearAspectForm() {
+    document.getElementById('knowledge-aspect-id').value = '';
+    document.getElementById('knowledge-aspect-name').value = '';
+    document.getElementById('knowledge-aspect-description').value = '';
+    document.getElementById('knowledge-aspect-topic').value = '';
+    document.getElementById('knowledge-aspect-active').checked = true;
+}
+
+function fillAspectForm(aspect) {
+    document.getElementById('knowledge-aspect-id').value = aspect.id ?? aspect.Id ?? '';
+    document.getElementById('knowledge-aspect-name').value = aspect.name ?? aspect.Name ?? '';
+    document.getElementById('knowledge-aspect-description').value = aspect.description ?? aspect.Description ?? '';
+    document.getElementById('knowledge-aspect-topic').value = aspect.topicName ?? aspect.TopicName ?? '';
+    document.getElementById('knowledge-aspect-active').checked = Boolean(aspect.isActive ?? aspect.IsActive);
+    document.getElementById('knowledge-aspect-name').focus();
+}
+
+function handleAspectListClick(event) {
+    const button = event.target.closest('.aspect-edit-button');
+
+    if (!button) {
+        return;
+    }
+
+    const aspectId = Number(button.dataset.aspectId);
+    const aspect = knowledgeManagementState.aspects
+        .find(item => Number(item.id ?? item.Id) === aspectId);
+
+    if (aspect) {
+        fillAspectForm(aspect);
+    }
+}
+
+async function addErrorTypeAspectLink(event) {
+    event.preventDefault();
+
+    const status = document.getElementById('knowledge-management-status');
+    const errorTypeId = Number(document.getElementById('management-error-type-select').value);
+    const knowledgeAspectId = Number(document.getElementById('management-aspect-select').value);
+    const weight = Number(document.getElementById('error-type-aspect-weight').value);
+
+    if (!errorTypeId || !knowledgeAspectId) {
+        alert('Выберите тип ошибки и аспект знаний');
+        return;
+    }
+
+    if (!Number.isFinite(weight) || weight <= 0 || weight > 1) {
+        alert('Вес связи должен быть числом больше 0 и не больше 1');
+        return;
+    }
+
+    try {
+        status.textContent = 'Сохранение связи...';
+        status.classList.remove('error');
+
+        await authorizedPost('/KnowledgeManagement/ErrorTypeAspects', {
+            errorTypeId,
+            knowledgeAspectId,
+            weight
+        });
+
+        status.textContent = 'Связь сохранена. Если такая связь уже была, её вес обновлён.';
+        document.getElementById('error-type-aspect-weight').value = '1';
+        await refreshKnowledgeLinks();
+    } catch (error) {
+        alert(error.message || 'Не удалось сохранить связь');
+        setError(status, error.message || 'Не удалось сохранить связь');
+    }
+}
+
+function handleKnowledgeLinkTableClick(event) {
+    const saveButton = event.target.closest('.knowledge-link-save-button');
+    const deleteButton = event.target.closest('.knowledge-link-delete-button');
+
+    if (saveButton) {
+        updateErrorTypeAspectWeight(saveButton.dataset.linkId);
+        return;
+    }
+
+    if (deleteButton) {
+        deleteErrorTypeAspectLink(deleteButton.dataset.linkId);
+    }
+}
+
+async function updateErrorTypeAspectWeight(linkId) {
+    const status = document.getElementById('knowledge-management-status');
+    const input = Array.from(document.querySelectorAll('.knowledge-link-weight-input'))
+        .find(item => String(item.dataset.linkId) === String(linkId));
+    const weight = Number(input?.value);
+
+    if (!Number.isFinite(weight) || weight <= 0 || weight > 1) {
+        alert('Вес связи должен быть числом больше 0 и не больше 1');
+        return;
+    }
+
+    try {
+        status.textContent = 'Обновление веса связи...';
+        status.classList.remove('error');
+        await authorizedPut(`/KnowledgeManagement/ErrorTypeAspects/${encodeURIComponent(linkId)}`, { weight });
+        status.textContent = 'Вес связи обновлён.';
+        await refreshKnowledgeLinks();
+    } catch (error) {
+        alert(error.message || 'Не удалось обновить вес связи');
+        setError(status, error.message || 'Не удалось обновить вес связи');
+    }
+}
+
+async function deleteErrorTypeAspectLink(linkId) {
+    if (!confirm('Удалить связь типа ошибки и аспекта знаний?')) {
+        return;
+    }
+
+    const status = document.getElementById('knowledge-management-status');
+
+    try {
+        status.textContent = 'Удаление связи...';
+        status.classList.remove('error');
+        await authorizedDelete(`/KnowledgeManagement/ErrorTypeAspects/${encodeURIComponent(linkId)}`);
+        status.textContent = 'Связь удалена.';
+        await refreshKnowledgeLinks();
+    } catch (error) {
+        alert(error.message || 'Не удалось удалить связь');
+        setError(status, error.message || 'Не удалось удалить связь');
+    }
+}
+
+async function refreshKnowledgeAspectsAndLinks() {
+    const [aspects, links] = await Promise.all([
+        loadAspectsForManagement(),
+        loadErrorTypeAspectLinks()
+    ]);
+
+    knowledgeManagementState.aspects = Array.isArray(aspects) ? aspects : [];
+    knowledgeManagementState.links = Array.isArray(links) ? links : [];
+    renderManagementAspectSelect();
+    renderAspectsList();
+    renderErrorTypeAspectLinks();
+    await loadFilterDictionaries();
+}
+
+async function refreshKnowledgeLinks() {
+    const links = await loadErrorTypeAspectLinks();
+    knowledgeManagementState.links = Array.isArray(links) ? links : [];
+    renderErrorTypeAspectLinks();
 }
 
 function renderFilterLists() {
