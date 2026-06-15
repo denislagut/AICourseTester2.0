@@ -25,7 +25,6 @@ namespace AICourseTester.Services
 				fifteenPuzzleId: null,
 				analysisRunId: latestRunId);
 
-<<<<<<< HEAD
 			var oldGapsQuery = _context.KnowledgeGaps
 				.Where(g => g.AlphaBetaId == alphaBetaId);
 
@@ -37,8 +36,6 @@ namespace AICourseTester.Services
 			var oldGaps = await oldGapsQuery.ToListAsync();
 
 			_context.KnowledgeGaps.RemoveRange(oldGaps);
-=======
->>>>>>> origin/main
 
 			if (errors.Count == 0)
 			{
@@ -85,7 +82,6 @@ namespace AICourseTester.Services
 				fifteenPuzzleId: fifteenPuzzleId,
 				analysisRunId: latestRunId);
 
-<<<<<<< HEAD
 			var oldGapsQuery = _context.KnowledgeGaps
 				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fifteenPuzzleId);
 
@@ -97,8 +93,6 @@ namespace AICourseTester.Services
 			var oldGaps = await oldGapsQuery.ToListAsync();
 
 			_context.KnowledgeGaps.RemoveRange(oldGaps);
-=======
->>>>>>> origin/main
 
 			if (errors.Count == 0)
 			{

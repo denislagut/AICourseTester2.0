@@ -100,7 +100,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 });
 
-<<<<<<< HEAD
 function updateTeacherMenuItems(isTeacher) {
     const teacherMenuItems = document.querySelectorAll(
         '.teacher-only-menu-item, ' +
@@ -115,7 +114,8 @@ function updateTeacherMenuItems(isTeacher) {
             item.remove();
         }
     });
-=======
+}
+
 async function loadCausalLinks() {
     const container = getOrCreateCausalLinksContainer();
     const authtoken = Cookies.get('.AspNetCore.Identity.Application');
@@ -228,7 +228,6 @@ function getRelationText(relationType) {
         default:
             return relationType;
     }
->>>>>>> origin/main
 }
 
 function getNodeId(node) {
