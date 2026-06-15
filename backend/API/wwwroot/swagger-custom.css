@@ -1,0 +1,122 @@
+﻿/* Curl */
+.swagger-ui .curl,
+.swagger-ui .curl-command {
+    background: #ffffff !important;
+    color: #000000 !important;
+}
+
+/* Request URL */
+.swagger-ui .request-url {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #ccc !important;
+}
+
+/* Response body */
+.swagger-ui .highlight-code,
+.swagger-ui .microlight,
+.swagger-ui pre {
+    background: #ffffff !important;
+    color: #000000 !important;
+}
+
+    /* Response headers */
+    .swagger-ui pre code {
+        color: #000000 !important;
+    }
+
+    /* JSON */
+    .swagger-ui .microlight .string,
+    .swagger-ui .microlight .number,
+    .swagger-ui .microlight .boolean,
+    .swagger-ui .microlight .property {
+        color: #000000 !important;
+    }
+
+/* Кнопки Copy и Download */
+.swagger-ui .copy-to-clipboard,
+.swagger-ui .download-contents {
+    background: #f5f5f5 !important;
+    color: #000000 !important;
+}
+
+/* Улучшенная подсветка для светлой темы */
+
+/* Строки и значения */
+.swagger-ui .string,
+.swagger-ui .microlight .str {
+    color: #a31515 !important; /* тёмно-красный */
+}
+
+/* Имена полей JSON */
+.swagger-ui .property,
+.swagger-ui .attr {
+    color: #001080 !important; /* тёмно-синий */
+}
+
+/* Числа */
+.swagger-ui .number {
+    color: #098658 !important; /* тёмно-зелёный */
+}
+
+/* true / false / null */
+.swagger-ui .boolean,
+.swagger-ui .null {
+    color: #0000ff !important;
+}
+
+/* URL в curl */
+.swagger-ui .curl-command .url,
+.swagger-ui .request-url {
+    color: #005cc5 !important;
+    font-weight: 600;
+}
+
+/* Заголовки Authorization, Accept и т.п. */
+.swagger-ui .curl-command {
+    color: #000 !important;
+}
+
+/* Общий текст в блоках кода */
+.swagger-ui pre,
+.swagger-ui code,
+.swagger-ui .microlight {
+    color: #000 !important;
+}
+
+/* Response Body JSON */
+.swagger-ui .responses-wrapper pre,
+.swagger-ui .responses-wrapper code,
+.swagger-ui .responses-wrapper .highlight-code,
+.swagger-ui .responses-wrapper .microlight {
+    background: #ffffff !important;
+    color: #000000 !important;
+}
+
+/* JSON ключи */
+.swagger-ui .responses-wrapper .property,
+.swagger-ui .responses-wrapper .attr {
+    color: #001080 !important;
+}
+
+/* JSON строки */
+.swagger-ui .responses-wrapper .string,
+.swagger-ui .responses-wrapper .str {
+    color: #a31515 !important;
+}
+
+/* Числа */
+.swagger-ui .responses-wrapper .number {
+    color: #098658 !important;
+}
+
+/* true/false/null */
+.swagger-ui .responses-wrapper .boolean,
+.swagger-ui .responses-wrapper .null {
+    color: #0000ff !important;
+}
+
+/* Перекрыть любые встроенные цвета Swagger */
+.swagger-ui .responses-wrapper pre * {
+    color: inherit !important;
+}
