@@ -17,6 +17,7 @@ namespace AICourseTester.Data
 		public DbSet<AnalysisRun> AnalysisRuns { get; set; }
 
 		public DbSet<CausalErrorLink> CausalErrorLinks { get; set; }
+		public DbSet<CausalErrorRule> CausalErrorRules { get; set; }
 		public DbSet<ErrorRecord> ErrorRecords { get; set; }
 		public DbSet<ErrorType> ErrorTypes { get; set; }
 		public DbSet<KnowledgeAspect> KnowledgeAspects { get; set; }
@@ -173,6 +174,17 @@ namespace AICourseTester.Data
 				.WithMany(x => x.IncomingLinks)
 				.HasForeignKey(x => x.TargetErrorId)
 				.OnDelete(DeleteBehavior.Restrict);
+			modelBuilder.Entity<CausalErrorRule>()
+				.HasIndex(r => new
+				{
+					r.TaskType,
+					r.SourceErrorCode,
+					r.TargetErrorCode,
+					r.RelationType,
+					r.SameNodeRequired,
+					r.SameRootBranchRequired
+				})
+				.IsUnique();
 		}
     }
 }

@@ -1,6 +1,7 @@
 using AICourseTester.Data;
 using AICourseTester.DTO;
 using AICourseTester.Models;
+using AICourseTester.Models.Analysis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -186,6 +187,49 @@ namespace AICourseTester.Controllers
 			await _context.SaveChangesAsync();
 
 			return Ok();
+		}
+
+		[Authorize(Roles = "Administrator")]
+		[HttpGet("CausalRules")]
+		public async Task<ActionResult<List<CausalErrorRule>>> GetRules()
+		{
+			return await _context.CausalErrorRules
+				.OrderBy(r => r.TaskType)
+				.ThenBy(r => r.SourceErrorCode)
+				.ToListAsync();
+		}
+
+		[Authorize(Roles = "Administrator")]
+		[HttpPost("CausalRules")]
+		public async Task<ActionResult> CreateRule(CausalErrorRule rule)
+		{
+			_context.CausalErrorRules.Add(rule);
+			await _context.SaveChangesAsync();
+
+			return Ok(rule);
+		}
+
+		[Authorize(Roles = "Administrator")]
+		[HttpPut("CausalRules/{id}")]
+		public async Task<ActionResult> UpdateRule(int id, CausalErrorRule updatedRule)
+		{
+			var rule = await _context.CausalErrorRules.FindAsync(id);
+
+			if (rule == null)
+				return NotFound();
+
+			rule.TaskType = updatedRule.TaskType;
+			rule.SourceErrorCode = updatedRule.SourceErrorCode;
+			rule.TargetErrorCode = updatedRule.TargetErrorCode;
+			rule.RelationType = updatedRule.RelationType;
+			rule.Weight = updatedRule.Weight;
+			rule.SameNodeRequired = updatedRule.SameNodeRequired;
+			rule.SameRootBranchRequired = updatedRule.SameRootBranchRequired;
+			rule.IsActive = updatedRule.IsActive;
+
+			await _context.SaveChangesAsync();
+
+			return Ok(rule);
 		}
 
 		private IQueryable<ErrorTypeAspectViewDTO> BuildLinkQuery()

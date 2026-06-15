@@ -5,6 +5,6 @@ namespace AICourseTester.Services.Interfaces
 {
 	public interface IErrorCausalityBuilder
 	{
-		List<CausalErrorLink> Build(List<ErrorRecord> errors);
+		List<CausalErrorLink> Build(List<ErrorRecord> errors, List<CausalErrorRule> rules);
 	}
 }

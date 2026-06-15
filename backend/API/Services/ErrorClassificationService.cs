@@ -567,9 +567,10 @@ namespace AICourseTester.Services
 				}
 				else
 				{
-					existing.Name = requiredType.Name;
+					/*existing.Name = requiredType.Name;
 					existing.Description = requiredType.Description;
-					existing.DefaultSeverity = requiredType.DefaultSeverity;
+					existing.DefaultSeverity = requiredType.DefaultSeverity;*/
+					continue;
 				}
 			}
 
@@ -702,9 +703,10 @@ namespace AICourseTester.Services
 				}
 				else
 				{
-					existing.Description = requiredAspect.Description;
+					/*existing.Description = requiredAspect.Description;
 					existing.TopicName = requiredAspect.TopicName;
-					existing.IsActive = requiredAspect.IsActive;
+					existing.IsActive = requiredAspect.IsActive;*/
+					continue;
 				}
 			}
 
@@ -798,11 +800,12 @@ namespace AICourseTester.Services
 				}
 				else
 				{
-					existingLink.Weight = weight;
+					//existingLink.Weight = weight;
+					continue;
 				}
 			}
 
-			var requiredLinkKeys = requiredLinks
+			/*var requiredLinkKeys = requiredLinks
 				.Select(link =>
 				{
 					var errorType = errorTypes.FirstOrDefault(t => t.Code == link.errorTypeCode);
@@ -826,7 +829,7 @@ namespace AICourseTester.Services
 					required.KnowledgeAspectId == existing.KnowledgeAspectId))
 				.ToList();
 
-			_context.ErrorTypeAspects.RemoveRange(obsoleteLinks);
+			_context.ErrorTypeAspects.RemoveRange(obsoleteLinks);*/
 
 			await _context.SaveChangesAsync();
 		}

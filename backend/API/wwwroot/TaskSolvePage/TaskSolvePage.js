@@ -394,7 +394,7 @@ function resetEventListeners(isViewMode = false, isTrainingMode = false) {
     
     // Устанавливаем новые обработчики
     if (!isViewMode) {
-        document.getElementById('submit-solution').addEventListener('click', async function() {
+        document.getElementById('submit-solution').addEventListener('click', async function () {
             const userSolution = collectSolution();
             const messageElement = document.getElementById('solution-message');
             try {
@@ -430,6 +430,10 @@ function resetEventListeners(isViewMode = false, isTrainingMode = false) {
                     }
                     message += '</ul>';
                     messageElement.innerHTML = message;
+
+                    if (!isTrainingMode) {
+                        await loadCausalLinks();
+                    }
                 }
             } catch (error) {
                 console.error('Ошибка отправки решения:', error);

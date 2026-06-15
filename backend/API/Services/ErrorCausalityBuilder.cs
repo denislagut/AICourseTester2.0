@@ -6,12 +6,55 @@ namespace AICourseTester.Services.Analysis
 {
 	public class ErrorCausalityBuilder : IErrorCausalityBuilder
 	{
-		public List<CausalErrorLink> Build(List<ErrorRecord> errors)
+		public List<CausalErrorLink> Build(
+			List<ErrorRecord> errors,
+			List<CausalErrorRule> rules)
 		{
 			var links = new List<CausalErrorLink>();
 
-			AddFifteenPuzzleLinks(errors, links);
-			AddAlphaBetaLinks(errors, links);
+			foreach (var rule in rules.Where(r => r.IsActive))
+			{
+				var sources = errors.Where(e => e.Code == rule.SourceErrorCode);
+				var targets = errors.Where(e => e.Code == rule.TargetErrorCode);
+
+				foreach (var source in sources)
+				{
+					foreach (var target in targets)
+					{
+						if (source.Id == target.Id)
+							continue;
+
+						if (rule.SameNodeRequired && source.NodeId != target.NodeId)
+							continue;
+
+						if (rule.SameRootBranchRequired &&
+							source.RootBranchId != target.RootBranchId)
+							continue;
+
+						links.Add(new CausalErrorLink
+						{
+							SourceErrorId = source.Id,
+							TargetErrorId = target.Id,
+							RelationType = rule.RelationType,
+							Weight = rule.Weight
+						});
+					}
+				}
+			}
+
+			Console.WriteLine($"Errors count: {errors.Count}");
+			Console.WriteLine($"Rules count: {rules.Count}");
+			Console.WriteLine($"Links count: {links.Count}");
+
+			foreach (var error in errors)
+			{
+				Console.WriteLine($"Error: {error.Code}, NodeId={error.NodeId}, RootBranchId={error.RootBranchId}");
+			}
+
+			foreach (var rule in rules)
+			{
+				Console.WriteLine($"Rule: {rule.SourceErrorCode} -> {rule.TargetErrorCode}, {rule.RelationType}");
+			}
 
 			return RemoveDuplicates(links);
 		}

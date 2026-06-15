@@ -331,7 +331,11 @@ namespace AICourseTester.Services
 			await _context.ErrorRecords.AddRangeAsync(errorEntities);
 			await _context.SaveChangesAsync();
 
-			var links = _errorCausalityBuilder.Build(errorEntities);
+			var rules = await _context.CausalErrorRules
+				.Where(r => r.IsActive && r.TaskType == taskType)
+				.ToListAsync();
+
+			var links = _errorCausalityBuilder.Build(errorEntities, rules);
 
 			await _context.CausalErrorLinks.AddRangeAsync(links);
 			await _context.SaveChangesAsync();
