@@ -1,4 +1,5 @@
 let taskData;
+let currentViewUserId = null;
 
 document.addEventListener('DOMContentLoaded', async function() {
     if (!restrictAccess()) return;
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const urlParams = new URLSearchParams(window.location.search);
         const taskId = urlParams.get('taskId');
         userId = urlParams.get('userId');
+        currentViewUserId = userId;
         const taskType = urlParams.get('taskType');
         const isViewMode = urlParams.get('view') === 'true';
         const isTrainingMode = taskType === 'train';
@@ -113,6 +115,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                             message += '</ul>';
                             solutionMessage.innerHTML = message;
                         }
+                        if (!isTrainingMode) {
+                            await loadCausalLinks();
+                        }
                     }
                 } catch (error) {
                     console.error('Ошибка проверки решения в режиме просмотра:', error);
@@ -142,6 +147,105 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 });
+
+async function loadCausalLinks() {
+    const container = getOrCreateCausalLinksContainer();
+    const authtoken = Cookies.get('.AspNetCore.Identity.Application');
+
+    container.innerHTML = '<p>Загрузка причинно-следственных связей...</p>';
+
+    try {
+        const causalLinksUrl = currentViewUserId
+            ? `${apiHost}/AB/Users/${currentViewUserId}/CausalLinks`
+            : `${apiHost}/AB/Test/CausalLinks`;
+
+        const response = await fetch(causalLinksUrl, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${authtoken}`
+            }
+        });
+
+        if (!response.ok) {
+            container.innerHTML = '<p>Не удалось загрузить причинно-следственные связи.</p>';
+            return;
+        }
+
+        const links = await response.json();
+        renderCausalLinks(links, container);
+    } catch (error) {
+        console.error('Ошибка загрузки причинно-следственных связей:', error);
+        container.innerHTML = '<p>Ошибка при загрузке причинно-следственных связей.</p>';
+    }
+}
+
+function getOrCreateCausalLinksContainer() {
+    let container = document.getElementById('causal-links-container');
+
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'causal-links-container';
+        container.className = 'causal-links-container';
+
+        const solutionMessage = document.getElementById('solution-message');
+        solutionMessage.insertAdjacentElement('afterend', container);
+    }
+
+    return container;
+}
+
+function renderCausalLinks(links, container) {
+    if (!links || links.length === 0) {
+        container.innerHTML = `
+            <h3>Причинно-следственные связи между ошибками</h3>
+            <p>Связи между ошибками не обнаружены.</p>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <h3>Причинно-следственные связи между ошибками</h3>
+        ${links.map(link => `
+            <div class="causal-link-card">
+                <div class="causal-error">
+                    <strong>Причина:</strong>
+                    <div>${link.sourceError?.message ?? 'Ошибка не указана'}</div>
+                    <small>Код: ${link.sourceError?.code ?? '-'}, узел: ${link.sourceError?.nodeId ?? '-'}</small>
+                </div>
+
+                <div class="causal-relation">
+                    ${getRelationText(link.relationType)}
+                    <br>
+                    <small>Вес: ${link.weight}</small>
+                </div>
+
+                <div class="causal-error">
+                    <strong>Следствие:</strong>
+                    <div>${link.targetError?.message ?? 'Ошибка не указана'}</div>
+                    <small>Код: ${link.targetError?.code ?? '-'}, узел: ${link.targetError?.nodeId ?? '-'}</small>
+                </div>
+            </div>
+        `).join('')}
+    `;
+}
+
+function getRelationText(relationType) {
+    switch (relationType) {
+        case 'CAUSES':
+            return 'Является причиной';
+        case 'MAY_CAUSE':
+            return 'Может привести к';
+        case 'EXPLAINS':
+            return 'Объясняет';
+        case 'CONTEXT_FOR':
+            return 'Создаёт контекст для';
+        case 'SUMMARIZES':
+            return 'Обобщает';
+        default:
+            return relationType;
+    }
+}
 
 async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, settings = null) {
     const authtoken = Cookies.get('.AspNetCore.Identity.Application');

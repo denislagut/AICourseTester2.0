@@ -415,12 +415,94 @@ namespace AICourseTester.Controllers
 			}
 
 			_context.ErrorRecords.RemoveRange(oldErrors);
+		}
 
-			var oldGaps = await _context.KnowledgeGaps
-				.Where(g => g.AlphaBetaId == alphaBetaId)
-				.ToListAsync();
+		[Authorize, HttpGet("Test/CausalLinks")]
+		public async Task<ActionResult<List<object>>> GetABTestCausalLinks()
+		{
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
 
-			_context.KnowledgeGaps.RemoveRange(oldGaps);
+			if (ab == null)
+			{
+				return NotFound();
+			}
+
+			var links = await _context.CausalErrorLinks
+				.Where(l =>
+					l.SourceError.AlphaBetaId == ab.Id ||
+					l.TargetError.AlphaBetaId == ab.Id)
+				.Include(l => l.SourceError)
+				.Include(l => l.TargetError)
+				.OrderByDescending(l => l.Weight)
+				.Select(l => new
+				{
+					l.Id,
+					l.RelationType,
+					l.Weight,
+
+					SourceError = new
+					{
+						l.SourceError.Id,
+						l.SourceError.Code,
+						l.SourceError.Message,
+						l.SourceError.NodeId
+					},
+
+					TargetError = new
+					{
+						l.TargetError.Id,
+						l.TargetError.Code,
+						l.TargetError.Message,
+						l.TargetError.NodeId
+					}
+				})
+				.ToListAsync<object>();
+
+			return Ok(links);
+		}
+
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator")]
+		[HttpGet("Users/{userId}/CausalLinks")]
+		public async Task<ActionResult<List<object>>> GetUserCausalLinks(string userId)
+		{
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.UserId == userId);
+
+			if (ab == null)
+				return NotFound();
+
+			var links = await _context.CausalErrorLinks
+				.Where(l =>
+					l.SourceError.AlphaBetaId == ab.Id ||
+					l.TargetError.AlphaBetaId == ab.Id)
+				.Include(l => l.SourceError)
+				.Include(l => l.TargetError)
+				.OrderByDescending(l => l.Weight)
+				.Select(l => new
+				{
+					l.Id,
+					l.RelationType,
+					l.Weight,
+					SourceError = new
+					{
+						l.SourceError.Id,
+						l.SourceError.Code,
+						l.SourceError.Message,
+						l.SourceError.NodeId
+					},
+					TargetError = new
+					{
+						l.TargetError.Id,
+						l.TargetError.Code,
+						l.TargetError.Message,
+						l.TargetError.NodeId
+					}
+				})
+				.ToListAsync<object>();
+
+			return Ok(links);
 		}
 
 		private async Task<bool> _assignTask(string userId, int treeHeight, int maxValue, int template)

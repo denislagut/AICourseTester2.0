@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             if (taskData.userSolution && taskData.userSolution.length > 0) {
                 displaySolutionFeedback(taskData);
+                await loadCausalLinks();
 
                 taskData.userSolution.forEach(node => {
                     const id = getNodeId(node);
@@ -93,6 +94,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     });
                 });
             }
+
         }
     } catch (error) {
         console.error('Ошибка загрузки задачи:', error);
@@ -100,6 +102,120 @@ document.addEventListener('DOMContentLoaded', async function () {
         window.location.href = userId ? "/ProfileTeacherPage/ProfileTeacherPage.html" : "/ProfileStudentPage/ProfileStudentPage.html";
     }
 });
+
+async function loadCausalLinks() {
+    const container = getOrCreateCausalLinksContainer();
+    const authtoken = Cookies.get('.AspNetCore.Identity.Application');
+
+    container.innerHTML = '<p>Загрузка причинно-следственных связей...</p>';
+
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('userId');
+        const isViewMode = urlParams.get('view') === 'true';
+
+        const causalLinksUrl = isViewMode && userId
+            ? `${apiHost}/A/Users/${userId}/CausalLinks`
+            : `${apiHost}/A/Test/CausalLinks`;
+
+        const response = await fetch(causalLinksUrl, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${authtoken}`
+            }
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Ошибка загрузки связей:', response.status, errorText);
+            container.innerHTML = `<p>Не удалось загрузить причинно-следственные связи. Код: ${response.status}</p>`;
+            return;
+        }
+
+        const links = await response.json();
+        renderCausalLinks(links, container);
+
+    } catch (error) {
+        console.error('Ошибка загрузки причинно-следственных связей:', error);
+        container.innerHTML = '<p>Ошибка при загрузке причинно-следственных связей.</p>';
+    }
+}
+
+function getOrCreateCausalLinksContainer() {
+    let container = document.getElementById('causal-links-container');
+
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'causal-links-container';
+        container.className = 'causal-links-container';
+
+        const solutionMessage = document.getElementById('solution-message');
+
+        if (solutionMessage) {
+            solutionMessage.insertAdjacentElement('afterend', container);
+        }
+    }
+
+    return container;
+}
+
+function renderCausalLinks(links, container) {
+    if (!links || links.length === 0) {
+        container.innerHTML = `
+            <h3>Причинно-следственные связи между ошибками</h3>
+            <p>Связи между ошибками не обнаружены.</p>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <h3>Причинно-следственные связи между ошибками</h3>
+        ${links.map(link => `
+            <div class="causal-link-card">
+                <div class="causal-error">
+                    <strong>Причина:</strong>
+                    <div>${link.sourceError?.message ?? 'Ошибка не указана'}</div>
+                    <small>
+                        Код: ${link.sourceError?.code ?? '-'},
+                        узел: ${link.sourceError?.nodeId ?? '-'}
+                    </small>
+                </div>
+
+                <div class="causal-relation">
+                    ${getRelationText(link.relationType)}
+                    <br>
+                    <small>Вес: ${link.weight}</small>
+                </div>
+
+                <div class="causal-error">
+                    <strong>Следствие:</strong>
+                    <div>${link.targetError?.message ?? 'Ошибка не указана'}</div>
+                    <small>
+                        Код: ${link.targetError?.code ?? '-'},
+                        узел: ${link.targetError?.nodeId ?? '-'}
+                    </small>
+                </div>
+            </div>
+        `).join('')}
+    `;
+}
+
+function getRelationText(relationType) {
+    switch (relationType) {
+        case 'CAUSES':
+            return 'Является причиной';
+        case 'MAY_CAUSE':
+            return 'Может привести к';
+        case 'EXPLAINS':
+            return 'Объясняет';
+        case 'CONTEXT_FOR':
+            return 'Создаёт контекст для';
+        case 'SUMMARIZES':
+            return 'Обобщает';
+        default:
+            return relationType;
+    }
+}
 
 function getNodeId(node) {
     return node?.id ?? node?.Id;
@@ -476,6 +592,7 @@ function setupEventListeners(taskData, isViewMode, isTrainingMode) {
                         userSolution,
                         solution: response
                     });
+                    await loadCausalLinks();
 
                 } catch (error) {
                     const messageElement = document.getElementById('solution-message');
