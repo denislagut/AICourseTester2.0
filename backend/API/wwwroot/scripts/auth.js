@@ -14,6 +14,19 @@ function restrictAccess() {
     return true;
 }
 
+function restrictTeacherAccess() {
+    if (!restrictAccess()) {
+        return false;
+    }
+
+    if (sessionStorage.getItem('isTeacher') !== 'true') {
+        window.location.href = '/ProfileStudentPage/ProfileStudentPage.html';
+        return false;
+    }
+
+    return true;
+}
+
 function isTokenExpired(token) {
     try {
         const payload = JSON.parse(atob(token.split('.')[1]));

@@ -62,6 +62,111 @@ namespace AICourseTester.Controllers
             return await users.ToArrayAsync();
         }
 
+        [Authorize, HttpGet("TaskHistory")]
+        public async Task<ActionResult<StudentTaskHistoryDTO[]>> GetTaskHistory()
+        {
+            var userId = _userManager.GetUserId(User);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return Unauthorized();
+            }
+
+            var analysisRuns = await _context.AnalysisRuns
+                .AsNoTracking()
+                .Where(run =>
+                    run.UserId == userId &&
+                    run.Status == "Completed" &&
+                    run.CompletedAt.HasValue)
+                .OrderByDescending(run => run.CompletedAt)
+                .ThenByDescending(run => run.Id)
+                .ToListAsync();
+
+            var history = analysisRuns
+                .Select(run => new StudentTaskHistoryDTO
+                {
+                    Id = run.Id,
+                    TaskId = run.TaskType == "AlphaBeta" ? run.AlphaBetaId : run.FifteenPuzzleId,
+                    TaskType = run.TaskType == "FifteenPuzzle" ? "a-star" : "min-max",
+                    TaskName = run.TaskType == "FifteenPuzzle" ? "Пятнашки A*" : "min-max алгоритм",
+                    Date = run.CompletedAt!.Value,
+                    Status = "Проверено",
+                    IsSolved = true,
+                    CanOpen = false
+                })
+                .ToArray();
+
+            return Ok(history);
+        }
+
+        [Authorize(Roles = "Administrator"), HttpGet("TaskHistory/All")]
+        public async Task<ActionResult<TeacherTaskHistoryDTO[]>> GetAllTaskHistory()
+        {
+            var analysisRuns = await _context.AnalysisRuns
+                .AsNoTracking()
+                .Where(run =>
+                    run.Status == "Completed" &&
+                    run.CompletedAt.HasValue)
+                .OrderByDescending(run => run.CompletedAt)
+                .ThenByDescending(run => run.Id)
+                .ToListAsync();
+
+            var userIds = analysisRuns
+                .Select(run => run.UserId)
+                .Distinct()
+                .ToList();
+
+            var users = await _context.Users
+                .AsNoTracking()
+                .Where(user => userIds.Contains(user.Id))
+                .ToDictionaryAsync(user => user.Id);
+
+            var userGroups = await _context.UserGroups
+                .AsNoTracking()
+                .Include(userGroup => userGroup.Group)
+                .Where(userGroup => userIds.Contains(userGroup.UserId))
+                .ToListAsync();
+
+            var groupByUserId = userGroups
+                .GroupBy(userGroup => userGroup.UserId)
+                .ToDictionary(group => group.Key, group => group.First());
+
+            var history = analysisRuns
+                .Select(run =>
+                {
+                    users.TryGetValue(run.UserId, out var user);
+                    groupByUserId.TryGetValue(run.UserId, out var userGroup);
+
+                    var fullName = user == null
+                        ? run.UserId
+                        : string.Join(" ", new[] { user.SecondName, user.Name, user.Patronymic }
+                            .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+                    if (string.IsNullOrWhiteSpace(fullName))
+                    {
+                        fullName = user?.UserName ?? run.UserId;
+                    }
+
+                    return new TeacherTaskHistoryDTO
+                    {
+                        Id = run.Id,
+                        TaskId = run.TaskType == "AlphaBeta" ? run.AlphaBetaId : run.FifteenPuzzleId,
+                        TaskType = run.TaskType == "FifteenPuzzle" ? "a-star" : "min-max",
+                        TaskName = run.TaskType == "FifteenPuzzle" ? "Пятнашки A*" : "min-max алгоритм",
+                        UserId = run.UserId,
+                        UserName = fullName,
+                        GroupId = userGroup?.GroupId,
+                        GroupName = userGroup?.Group?.Name,
+                        Date = run.CompletedAt!.Value,
+                        Status = "Проверено",
+                        IsSolved = true,
+                        CanOpen = false
+                    };
+                })
+                .ToArray();
+
+            return Ok(history);
+        }
+
         [Authorize(Roles = "Administrator"), HttpGet("{userId}")]
         public async Task<ActionResult<UserDTO?>> GetUser(string userId)
         {

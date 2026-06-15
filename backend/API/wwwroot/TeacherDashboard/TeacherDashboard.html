@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/TeacherDashboard/TeacherDashboard.css">
     <link rel="stylesheet" href="/styles/main.css">
     <link rel="stylesheet" href="/styles/headers/AdminHeader.css">
+    <link rel="stylesheet" href="/TeacherDashboard/TeacherDashboard.css?v=20260615-knowledge-management-ui">
     <title>Рекомендации и аналитика</title>
 </head>
 <body>
@@ -204,11 +204,100 @@
             <div id="reports-status" class="status-text"></div>
             <div id="reports-content" class="reports-content"></div>
         </section>
+
+        <section class="dashboard-section knowledge-management-section">
+            <div class="section-heading">
+                <h2>Управление аспектами знаний и связями с типами ошибок</h2>
+                <span id="knowledge-management-status" class="status-text"></span>
+            </div>
+
+            <div class="knowledge-management-grid">
+                <div class="knowledge-panel">
+                    <h3>Аспект знаний</h3>
+                    <form id="knowledge-aspect-form" class="knowledge-form">
+                        <input type="hidden" id="knowledge-aspect-id">
+                        <label>
+                            <span>Название аспекта</span>
+                            <input type="text" id="knowledge-aspect-name" required>
+                        </label>
+                        <label>
+                            <span>Описание</span>
+                            <textarea id="knowledge-aspect-description" rows="3"></textarea>
+                        </label>
+                        <label>
+                            <span>Тема</span>
+                            <input type="text" id="knowledge-aspect-topic">
+                        </label>
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="knowledge-aspect-active" checked>
+                            <span>Активен</span>
+                        </label>
+                        <div class="button-row">
+                            <button type="submit">Сохранить аспект</button>
+                            <button type="button" id="clear-knowledge-aspect-form" class="button-secondary">Очистить</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="knowledge-panel">
+                    <h3>Список аспектов знаний</h3>
+                    <div id="knowledge-aspects-list" class="aspects-list">
+                        <span class="empty-state">Загрузка аспектов...</span>
+                    </div>
+                </div>
+
+                <div class="knowledge-panel">
+                    <h3>Связь типа ошибки с аспектом</h3>
+                    <form id="error-type-aspect-form" class="knowledge-form">
+                        <label>
+                            <span>Тип ошибки</span>
+                            <select id="management-error-type-select" required>
+                                <option value="">Выберите тип ошибки</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Аспект знаний</span>
+                            <select id="management-aspect-select" required>
+                                <option value="">Выберите аспект</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Вес связи</span>
+                            <input type="number" id="error-type-aspect-weight" min="0.01" max="1" step="0.01" value="1" required>
+                        </label>
+                        <button type="submit">Добавить связь</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="knowledge-panel knowledge-links-panel">
+                <h3>Существующие связи</h3>
+                <div class="knowledge-links-table-wrapper">
+                    <table class="knowledge-links-table">
+                        <thead>
+                            <tr>
+                                <th>Тип ошибки</th>
+                                <th>Код ошибки</th>
+                                <th>Аспект знаний</th>
+                                <th>Тема</th>
+                                <th>Вес</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="knowledge-links-table-body">
+                            <tr>
+                                <td colspan="6">Загрузка связей...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.1/dist/js.cookie.min.js"></script>
     <script src="/scripts/main.js"></script>
     <script src="/scripts/auth.js"></script>
-    <script src="/TeacherDashboard/TeacherDashboard.js"></script>
+    <script src="/TeacherDashboard/TeacherDashboard.js?v=20260615-knowledge-management"></script>
 </body>
 </html>

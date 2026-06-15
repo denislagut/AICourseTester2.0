@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AICourseTester.Controllers
 {
-	[Authorize(AuthenticationSchemes = "Identity.Bearer")]
+	[Authorize(AuthenticationSchemes = "Identity.Bearer", Roles = "Administrator")]
 	[Route("api/[controller]")]
 	[ApiController]
 	public class AnalyticsController : ControllerBase

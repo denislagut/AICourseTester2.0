@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AICourseTester.Controllers
 {
-	[Authorize]
+	[Authorize(Roles = "Administrator")]
 	[Route("api/[controller]")]
 	[ApiController]
 	public class RecommendationsController : ControllerBase

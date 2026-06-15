@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    if (!restrictAccess()) return;
+    if (!restrictTeacherAccess()) return;
 
     const userFullName = sessionStorage.getItem('userFullName') || 'Иванов И. И.';
     document.querySelector('.profile-tooltip_username').textContent = userFullName;
@@ -87,28 +87,31 @@ async function fetchAssignedTasks() {
         }
         const minMaxTasks = await minMaxResponse.json();
         const aStarTasks = await aStarResponse.json();
+        const historyTasks = await fetchCompletedTaskHistory(authtoken);
 
         if (!Array.isArray(minMaxTasks) || !Array.isArray(aStarTasks)) {
             throw new Error('Ответ API не является массивом заданий');
         }
 
-        // Combine tasks with task type information
-        const tasksWithUserInfo = [
+        const currentTasks = [
             ...minMaxTasks.map(assignment => ({
                 ...assignment.task,
                 userId: assignment.user?.id || 'unknown',
                 userName: assignment.user ? [assignment.user.secondName, assignment.user.name, assignment.user.patronymic].filter(Boolean).join(' ') : 'Неизвестный пользователь',
                 group: assignment.user?.group || '----------',
-                taskType: 'min-max'
+                taskType: 'min-max',
+                isHistory: false
             })),
             ...aStarTasks.map(assignment => ({
                 ...assignment.task,
                 userId: assignment.user?.id || 'unknown',
                 userName: assignment.user ? [assignment.user.secondName, assignment.user.name, assignment.user.patronymic].filter(Boolean).join(' ') : 'Неизвестный пользователь',
                 group: assignment.user?.group || '----------',
-                taskType: 'a-star'
+                taskType: 'a-star',
+                isHistory: false
             }))
         ];
+        const tasksWithUserInfo = mergeCurrentAndHistoryTasks(currentTasks, historyTasks);
 
         console.log('Преобразованные данные:', tasksWithUserInfo); // Диагностика
         populateTasksTable(tasksWithUserInfo);
@@ -116,6 +119,87 @@ async function fetchAssignedTasks() {
         console.error('Ошибка в fetchAssignedTasks:', error.message, error.stack);
         alert(`Произошла ошибка при загрузке заданий: ${error.message}`);
     }
+}
+
+async function fetchCompletedTaskHistory(authtoken) {
+    const response = await fetch(`${apiHost}/Users/TaskHistory/All`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authtoken}`
+        }
+    });
+
+    if (response.ok) {
+        const history = await response.json();
+        return Array.isArray(history) ? history : [];
+    }
+
+    if (response.status === 401) {
+        if (isTokenExpired(authtoken)) {
+            refreshToken();
+        }
+        return [];
+    }
+
+    if (response.status === 404) {
+        console.warn('История заданий пока недоступна. Перезапустите backend, чтобы появился endpoint /api/Users/TaskHistory/All.');
+        return [];
+    }
+
+    throw new Error(`Ошибка HTTP (история заданий): ${response.status} ${response.statusText}`);
+}
+
+function mergeCurrentAndHistoryTasks(currentTasks, historyTasks) {
+    const normalizedHistory = historyTasks.map(task => ({
+        id: task.id || task.Id,
+        taskId: task.taskId || task.TaskId,
+        taskType: normalizeTaskType(task.taskType || task.TaskType),
+        taskName: task.taskName || task.TaskName,
+        userId: task.userId || task.UserId || 'unknown',
+        userName: task.userName || task.UserName || 'Без имени',
+        group: task.groupName || task.GroupName || '----------',
+        date: task.date || task.Date,
+        status: task.status || task.Status || 'Проверено',
+        isSolved: true,
+        isHistory: true,
+        canOpen: false
+    }));
+
+    const skippedHistoryIds = new Set();
+
+    currentTasks.forEach(currentTask => {
+        if (!isTaskSolved(currentTask)) {
+            return;
+        }
+
+        const currentTaskId = currentTask.id || currentTask.Id;
+        const currentTaskType = normalizeTaskType(currentTask.taskType || currentTask.TaskType);
+        const matchingHistory = normalizedHistory.find(historyTask =>
+            !skippedHistoryIds.has(historyTask.id) &&
+            historyTask.userId === currentTask.userId &&
+            historyTask.taskType === currentTaskType &&
+            (!currentTaskId || !historyTask.taskId || String(historyTask.taskId) === String(currentTaskId)));
+
+        if (matchingHistory) {
+            skippedHistoryIds.add(matchingHistory.id);
+        }
+    });
+
+    const visibleHistory = normalizedHistory
+        .filter(task => !skippedHistoryIds.has(task.id));
+
+    return [...currentTasks, ...visibleHistory]
+        .sort((left, right) => {
+            const leftHasActions = hasTaskActions(left);
+            const rightHasActions = hasTaskActions(right);
+
+            if (leftHasActions !== rightHasActions) {
+                return leftHasActions ? -1 : 1;
+            }
+
+            return new Date(getTaskDate(right) || 0) - new Date(getTaskDate(left) || 0);
+        });
 }
 
 function populateTasksTable(tasks) {
@@ -129,18 +213,28 @@ function populateTasksTable(tasks) {
     tasks.forEach((task, index) => {
         const tr = document.createElement('tr');
         tr.style.whiteSpace = 'nowrap';
+        if (task.isHistory) {
+            tr.classList.add('task-history-row');
+        }
 
-        const date = new Date(task.date || Date.now());
+        const date = new Date(getTaskDate(task) || Date.now());
         const formattedDate = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
         const shortName = formatShortName(task.userName);
-        const status = task.isSolved ? 'Выполнено' : 'Выдано';
+        const status = task.status || (isTaskSolved(task) ? 'Выполнено' : 'Выдано');
         const userId = task.userId || 'unknown';
-        const taskName = task.taskType === 'min-max' ? 'min-max алгоритм' : 'Пятнашки A*';
+        const taskType = normalizeTaskType(task.taskType || task.TaskType);
+        const taskName = task.taskName || (taskType === 'min-max' ? 'min-max алгоритм' : 'Пятнашки A*');
         const buttonId = `edit-button-${task.id || 'unknown'}-${index}`; // Уникальный ID для кнопки
 
-        console.log('Создание строки таблицы:', { taskId: task.id, userId, taskType: task.taskType, taskName, buttonId }); // Диагностика
+        console.log('Создание строки таблицы:', { taskId: task.id, userId, taskType, taskName, buttonId, isHistory: task.isHistory }); // Диагностика
 
-        const viewButton = task.isSolved ? `<button class="button-view" data-task-id="${task.id || 'unknown'}" data-user-id="${userId}" data-task-type="${task.taskType}" title="Посмотреть решение"></button>` : '';
+        const actionContent = task.isHistory
+            ? '<span class="task-history-action">-</span>'
+            : `
+                <button id="${buttonId}" class="button-edit" data-task-id="${task.id || 'unknown'}" data-user-id="${userId}" data-task-type="${taskType}" title="Редактировать"></button>
+                <button class="button-delete" data-task-id="${task.id || 'unknown'}" data-user-id="${userId}" data-task-type="${taskType}" title="Удалить"></button>
+                ${isTaskSolved(task) ? `<button class="button-view" data-task-id="${task.id || 'unknown'}" data-user-id="${userId}" data-task-type="${taskType}" title="Посмотреть решение"></button>` : ''}
+            `;
 
         tr.innerHTML = `
             <td>${taskName}</td>
@@ -149,9 +243,7 @@ function populateTasksTable(tasks) {
             <td>${formattedDate}</td>
             <td>${status}</td>
             <td class="actions-cell">
-                <button id="${buttonId}" class="button-edit" data-task-id="${task.id || 'unknown'}" data-user-id="${userId}" data-task-type="${task.taskType}" title="Редактировать"></button>
-                <button class="button-delete" data-task-id="${task.id || 'unknown'}" data-user-id="${userId}" data-task-type="${task.taskType}" title="Удалить"></button>
-                ${viewButton}
+                ${actionContent}
             </td>
         `;
 
@@ -263,4 +355,22 @@ function formatShortName(fullName) {
     }
 
     return fullName;
+}
+
+function normalizeTaskType(taskType) {
+    return taskType === 'FifteenPuzzle' || taskType === 'a-star'
+        ? 'a-star'
+        : 'min-max';
+}
+
+function isTaskSolved(task) {
+    return task.isSolved === true || task.IsSolved === true;
+}
+
+function getTaskDate(task) {
+    return task.date || task.Date || task.completedAt || task.CompletedAt;
+}
+
+function hasTaskActions(task) {
+    return !task.isHistory;
 }

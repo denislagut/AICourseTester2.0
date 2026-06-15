@@ -12,7 +12,7 @@ let allUsers = [];
 let selectedUserIds = [];
 
 document.addEventListener('DOMContentLoaded', function() {
-    if (!restrictAccess()) return;
+    if (!restrictTeacherAccess()) return;
 
     const userFullName = sessionStorage.getItem('userFullName') || 'Иванов И. И.';
     document.querySelector('.profile-tooltip_username').textContent = userFullName;

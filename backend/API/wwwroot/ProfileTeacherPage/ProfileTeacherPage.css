@@ -154,6 +154,19 @@
     width: 8%;
     min-width: 80px; 
 } 
+
+.task-history-row {
+    color: #555555;
+    background-color: #fafafa;
+}
+
+.task-history-action {
+    display: inline-block;
+    width: 31px;
+    text-align: center;
+    color: #7F7C7C;
+}
+
 .given-tasks-table__table tr th:first-child,
 .given-tasks-table__table tr td:first-child {
     border-left: 1px solid #ddd;
