@@ -204,8 +204,12 @@ AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+	app.UseSwagger();
+
+	app.UseSwaggerUI(options =>
+	{
+		options.InjectStylesheet("/swagger-custom.css");
+	});
 }
 
 //app.MapIdentityApi<ApplicationUser>();

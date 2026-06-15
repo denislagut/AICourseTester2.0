@@ -244,11 +244,98 @@ namespace AICourseTester.Controllers
 
 			_context.ErrorRecords.RemoveRange(oldErrors);
 
-			var oldGaps = await _context.KnowledgeGaps
-				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fifteenPuzzleId)
-				.ToListAsync();
+		}
 
-			_context.KnowledgeGaps.RemoveRange(oldGaps);
+		[Authorize, HttpGet("Test/CausalLinks")]
+		public async Task<ActionResult<List<object>>> GetFifteenPuzzleTestCausalLinks()
+		{
+			var puzzle = await _context.Fifteens
+				.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+
+			if (puzzle == null)
+			{
+				return NotFound();
+			}
+
+			var links = await _context.CausalErrorLinks
+				.Where(l =>
+					l.SourceError.FifteenPuzzleId == puzzle.Id ||
+					l.TargetError.FifteenPuzzleId == puzzle.Id)
+				.Include(l => l.SourceError)
+				.Include(l => l.TargetError)
+				.OrderByDescending(l => l.Weight)
+				.Select(l => new
+				{
+					l.Id,
+					l.RelationType,
+					l.Weight,
+
+					SourceError = new
+					{
+						l.SourceError.Id,
+						l.SourceError.Code,
+						l.SourceError.Message,
+						l.SourceError.NodeId
+					},
+
+					TargetError = new
+					{
+						l.TargetError.Id,
+						l.TargetError.Code,
+						l.TargetError.Message,
+						l.TargetError.NodeId
+					}
+				})
+				.ToListAsync<object>();
+
+			return Ok(links);
+		}
+
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator")]
+		[HttpGet("Users/{userId}/CausalLinks")]
+		public async Task<ActionResult<List<object>>> GetUserFifteenPuzzleCausalLinks(string userId)
+		{
+			var puzzle = await _context.Fifteens
+				.FirstOrDefaultAsync(f => f.UserId == userId);
+
+			if (puzzle == null)
+			{
+				return NotFound();
+			}
+
+			var links = await _context.CausalErrorLinks
+				.Where(l =>
+					l.SourceError.FifteenPuzzleId == puzzle.Id ||
+					l.TargetError.FifteenPuzzleId == puzzle.Id)
+				.Include(l => l.SourceError)
+				.Include(l => l.TargetError)
+				.OrderByDescending(l => l.Weight)
+				.Select(l => new
+				{
+					l.Id,
+					l.RelationType,
+					l.Weight,
+
+					SourceError = new
+					{
+						l.SourceError.Id,
+						l.SourceError.Code,
+						l.SourceError.Message,
+						l.SourceError.NodeId
+					},
+
+					TargetError = new
+					{
+						l.TargetError.Id,
+						l.TargetError.Code,
+						l.TargetError.Message,
+						l.TargetError.NodeId
+					}
+				})
+				.ToListAsync<object>();
+
+			return Ok(links);
 		}
 
 		private async Task<bool> _assignTask(string userId, int heuristic, int dimensions, int iters)

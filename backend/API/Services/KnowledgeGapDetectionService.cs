@@ -25,6 +25,7 @@ namespace AICourseTester.Services
 				fifteenPuzzleId: null,
 				analysisRunId: latestRunId);
 
+<<<<<<< HEAD
 			var oldGapsQuery = _context.KnowledgeGaps
 				.Where(g => g.AlphaBetaId == alphaBetaId);
 
@@ -36,11 +37,22 @@ namespace AICourseTester.Services
 			var oldGaps = await oldGapsQuery.ToListAsync();
 
 			_context.KnowledgeGaps.RemoveRange(oldGaps);
+=======
+>>>>>>> origin/main
 
 			if (errors.Count == 0)
 			{
+				var improvedGaps = await BuildResolvedGapsAsync(
+					userId,
+					taskType: "AlphaBeta",
+					alphaBetaId: alphaBetaId,
+					fifteenPuzzleId: null,
+					analysisRunId: latestRunId);
+
+				await _context.KnowledgeGaps.AddRangeAsync(improvedGaps);
 				await _context.SaveChangesAsync();
-				return new List<KnowledgeGap>();
+
+				return improvedGaps;
 			}
 
 			var gaps = BuildGapsFromErrors(
@@ -73,6 +85,7 @@ namespace AICourseTester.Services
 				fifteenPuzzleId: fifteenPuzzleId,
 				analysisRunId: latestRunId);
 
+<<<<<<< HEAD
 			var oldGapsQuery = _context.KnowledgeGaps
 				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fifteenPuzzleId);
 
@@ -84,11 +97,22 @@ namespace AICourseTester.Services
 			var oldGaps = await oldGapsQuery.ToListAsync();
 
 			_context.KnowledgeGaps.RemoveRange(oldGaps);
+=======
+>>>>>>> origin/main
 
 			if (errors.Count == 0)
 			{
+				var improvedGaps = await BuildResolvedGapsAsync(
+					userId,
+					taskType: "FifteenPuzzle",
+					alphaBetaId: null,
+					fifteenPuzzleId: fifteenPuzzleId,
+					analysisRunId: latestRunId);
+
+				await _context.KnowledgeGaps.AddRangeAsync(improvedGaps);
 				await _context.SaveChangesAsync();
-				return new List<KnowledgeGap>();
+
+				return improvedGaps;
 			}
 
 			var gaps = BuildGapsFromErrors(
@@ -109,6 +133,50 @@ namespace AICourseTester.Services
 			await _context.SaveChangesAsync();
 
 			return gaps;
+		}
+
+		private async Task<List<KnowledgeGap>> BuildResolvedGapsAsync(
+			string userId,
+			string taskType,
+			int? alphaBetaId,
+			int? fifteenPuzzleId,
+			int? analysisRunId)
+		{
+			var previousGaps = await _context.KnowledgeGaps
+				.Where(g =>
+					g.UserId == userId &&
+					g.TaskType == taskType &&
+					g.AnalysisRunId != analysisRunId)
+				.GroupBy(g => g.KnowledgeAspectId)
+				.Select(g => g
+					.OrderByDescending(x => x.CreatedAt)
+					.First())
+				.ToListAsync();
+
+			return previousGaps
+				.Where(g => g.GapScore > 0)
+				.Select(previous => new KnowledgeGap
+				{
+					UserId = userId,
+					TaskType = taskType,
+					AlphaBetaId = alphaBetaId,
+					FifteenPuzzleId = fifteenPuzzleId,
+					KnowledgeAspectId = previous.KnowledgeAspectId,
+
+					ErrorCount = 0,
+					TotalWeight = 0,
+					AverageSeverity = 0,
+					GapScore = 0,
+					Level = "Low",
+
+					PreviousGapScore = previous.GapScore,
+					GapScoreDelta = Math.Round(0 - previous.GapScore, 2),
+					Trend = "Improved",
+
+					AnalysisRunId = analysisRunId,
+					CreatedAt = DateTime.UtcNow
+				})
+				.ToList();
 		}
 
 		private async Task<int?> GetLatestAnalysisRunIdAsync(
