@@ -87,7 +87,7 @@ async function fetchAssignedTasks() {
         }
         const minMaxTasks = await minMaxResponse.json();
         const aStarTasks = await aStarResponse.json();
-        const historyTasks = await fetchCompletedTaskHistory(authtoken);
+        const historyTasks = [];
 
         if (!Array.isArray(minMaxTasks) || !Array.isArray(aStarTasks)) {
             throw new Error('Ответ API не является массивом заданий');
@@ -273,7 +273,9 @@ async function handleDeleteTask(e) {
 
     try {
         const authtoken = Cookies.get('.AspNetCore.Identity.Application');
-        const endpoint = taskType === 'min-max' ? `${apiHost}/AB/Users/${userId}` : `${apiHost}/A/FifteenPuzzle/Users/${userId}`;
+        const endpoint = taskType === 'min-max'
+            ? `${apiHost}/AB/Users/${userId}/Tasks/${taskId}`
+            : `${apiHost}/A/FifteenPuzzle/Users/${userId}/Tasks/${taskId}`;
         const response = await fetch(endpoint, {
             method: 'DELETE',
             headers: {

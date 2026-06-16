@@ -7,6 +7,7 @@ function joinFullName(data) {
 let isEditMode = false;
 let editUserId = null;
 let editTaskType = null;
+let editTaskId = null;
 
 let allUsers = [];
 let selectedUserIds = [];
@@ -20,6 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const urlParams = new URLSearchParams(window.location.search);
     editUserId = urlParams.get('userId');
+    editTaskId = urlParams.get('taskId');
     const userName = urlParams.get('userName');
     const userGroup = decodeURIComponent(urlParams.get('userGroup')) || '----------';
     editTaskType = urlParams.get('taskType') || 'min-max';
@@ -31,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateTaskInfo(editTaskType);
 
     if (isEditMode) {
-        if (!editUserId || !userName || !userGroup) {
+        if (!editUserId || !editTaskId || !userName || !userGroup) {
             alert('Не переданы необходимые параметры для редактирования');
             window.location.href = "/ProfileTeacherPage/ProfileTeacherPage.html";
             return;
@@ -232,7 +234,7 @@ document.querySelector('.admin-form__submit-button').addEventListener('click', a
             const template = document.getElementById('template-input').value;
 
             if (isEditMode) {
-                const response = await fetch(`${apiHost}/AB/Users/${editUserId}?height=${parseInt(treeHeight)}&maxValue=${parseInt(max)}&template=${parseInt(template)}&generate=true`, {
+                const response = await fetch(`${apiHost}/AB/Users/${editUserId}/Tasks/${editTaskId}?height=${parseInt(treeHeight)}&maxValue=${parseInt(max)}&template=${parseInt(template)}&generate=true`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -275,7 +277,7 @@ document.querySelector('.admin-form__submit-button').addEventListener('click', a
             const heuristic = document.getElementById('heuristic-input').value;
 
             if (isEditMode) {
-                const response = await fetch(`${apiHost}/A/FifteenPuzzle/Users/${editUserId}?dimensions=${parseInt(dimensions)}&iters=${parseInt(iters)}&heuristic=${parseInt(heuristic)}`, {
+                const response = await fetch(`${apiHost}/A/FifteenPuzzle/Users/${editUserId}/Tasks/${editTaskId}?dimensions=${parseInt(dimensions)}&iters=${parseInt(iters)}&heuristic=${parseInt(heuristic)}&generate=true`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',

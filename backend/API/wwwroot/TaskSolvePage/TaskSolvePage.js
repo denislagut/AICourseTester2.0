@@ -1,4 +1,5 @@
 let taskData;
+let currentTaskId = null;
 let currentViewUserId = null;
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -41,11 +42,21 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
         const urlParams = new URLSearchParams(window.location.search);
         const taskId = urlParams.get('taskId');
+        currentTaskId = taskId;
+
         userId = urlParams.get('userId');
         currentViewUserId = userId;
         const taskType = urlParams.get('taskType');
         const isViewMode = urlParams.get('view') === 'true';
         const isTrainingMode = taskType === 'train';
+
+        if (!isTrainingMode && !taskId) {
+            alert('Не передан идентификатор задания');
+            window.location.href = isTeacher
+                ? "/ProfileTeacherPage/ProfileTeacherPage.html"
+                : "/ProfileStudentPage/ProfileStudentPage.html";
+            return;
+        }
         
         if (isTrainingMode) {
             document.getElementById('training-mode').style.display = 'block';
@@ -130,6 +141,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                             await loadCausalLinks();
                         }
                     }
+
                 } catch (error) {
                     console.error('Ошибка проверки решения в режиме просмотра:', error);
                     if (solutionMessage) {
@@ -167,8 +179,8 @@ async function loadCausalLinks() {
 
     try {
         const causalLinksUrl = currentViewUserId
-            ? `${apiHost}/AB/Users/${currentViewUserId}/CausalLinks`
-            : `${apiHost}/AB/Test/CausalLinks`;
+            ? `${apiHost}/AB/Users/${currentViewUserId}/Tasks/${currentTaskId}/CausalLinks`
+            : `${apiHost}/AB/Test/${currentTaskId}/CausalLinks`;
 
         const response = await fetch(causalLinksUrl, {
             method: 'GET',
@@ -308,7 +320,7 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
         };
     }
     if (isViewMode) {
-        url = `${apiHost}/AB/Users/${userId}`;
+        url = `${apiHost}/AB/Users/${userId}/Tasks/${taskId}`;
         response = await fetch(url, {
             method: 'GET',
             headers: {
@@ -348,7 +360,7 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
             correctSolution: { nodes: data.task.solution, path: data.task.path } || { nodes: [], path: [] }
         };
     } else {
-        url = `${apiHost}/AB/Test`;
+        url = `${apiHost}/AB/Test/${taskId}`;
         response = await fetch(url, {
             method: 'GET',
             headers: {
@@ -673,7 +685,9 @@ async function submitSolution(userSolution, isTrainingMode, problem) {
     
     const authtoken = Cookies.get('.AspNetCore.Identity.Application');
 
-    const url = isTrainingMode ? `${apiHost}/AB/Train` : `${apiHost}/AB/Test`;
+    const url = isTrainingMode
+        ? `${apiHost}/AB/Train`
+        : `${apiHost}/AB/Test/${currentTaskId}`;
     const body = isTrainingMode
         ? JSON.stringify({
             head: problem.head,

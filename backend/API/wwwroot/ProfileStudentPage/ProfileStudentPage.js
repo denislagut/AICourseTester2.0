@@ -57,20 +57,19 @@ async function fetchAssignedTasks(specificTaskType = null) {
         const currentTasks = [];
 
         if (!specificTaskType || specificTaskType === 'min-max') {
-            const task = await fetchCurrentTask(`${apiHost}/AB/Test`, 'min-max', authtoken);
-            if (task) {
-                currentTasks.push(task);
-            }
+            const tasks = await fetchCurrentTasks(`${apiHost}/AB/MyTasks`, 'min-max', authtoken);
+            currentTasks.push(...tasks);
         }
 
         if (!specificTaskType || specificTaskType === 'a-star') {
-            const task = await fetchCurrentTask(`${apiHost}/A/FifteenPuzzle/Test`, 'a-star', authtoken);
-            if (task) {
-                currentTasks.push(task);
-            }
+            const tasks = await fetchCurrentTasks(`${apiHost}/A/FifteenPuzzle/MyTasks`, 'a-star', authtoken);
+
+            currentTasks.push(...tasks);
         }
 
-        const historyTasks = await fetchCompletedTaskHistory(authtoken, specificTaskType);
+        const historyTasks = [];
+
+
         const tasks = mergeCurrentAndHistoryTasks(currentTasks, historyTasks);
 
         console.log('Полученные задания:', tasks);
@@ -109,6 +108,40 @@ async function fetchCurrentTask(url, taskType, authtoken) {
 
     if (response.status === 404) {
         return null;
+    }
+
+    throw new Error(`Ошибка HTTP (${taskType}): ${response.status}`);
+}
+
+async function fetchCurrentTasks(url, taskType, authtoken) {
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authtoken}`
+        }
+    });
+
+    if (response.ok) {
+        const tasks = await response.json();
+
+        return (tasks || []).map(task => ({
+            ...task,
+            taskType,
+            canOpen: true,
+            isHistory: false
+        }));
+    }
+
+    if (response.status === 401) {
+        if (isTokenExpired(authtoken)) {
+            refreshToken();
+        }
+        return [];
+    }
+
+    if (response.status === 404) {
+        return [];
     }
 
     throw new Error(`Ошибка HTTP (${taskType}): ${response.status}`);
@@ -205,7 +238,7 @@ function populateTasksTable(tasks) {
         const formattedDate = formatDate(getTaskDate(taskData));
         const status = taskData.status || taskData.Status || getTaskStatus(taskData);
         const teacherName = taskData.teacherName || taskData.TeacherName || 'Преподаватель';
-        const taskId = taskData.id || taskData.Id || `${taskType}-task`;
+        const taskId = getRealTaskId(taskData);
         const canOpen = isTaskOpenable(taskData);
         const actionContent = canOpen
             ? `<button class="button-solve" data-task-id="${taskId}" data-task-type="${taskType}" title="Посмотреть решение"></button>`
@@ -228,15 +261,26 @@ function populateTasksTable(tasks) {
             const taskId = this.dataset.taskId;
             const taskType = this.dataset.taskType;
             const taskData = tasks.find(task =>
-                String(task.id || task.Id || `${normalizeTaskType(task.taskType || task.TaskType)}-task`) === taskId);
+                String(getRealTaskId(task)) === String(taskId));
 
             console.log('Переход к решению:', { taskId, taskType, taskData });
             sessionStorage.setItem('currentTask', JSON.stringify(taskData));
             window.location.href = taskType === 'min-max'
-                ? `/TaskSolvePage/TaskSolvePage.html?taskType=${taskType}`
-                : `/TaskSolveAPage/TaskSolveAPage.html?taskType=${taskType}`;
+                ? `/TaskSolvePage/TaskSolvePage.html?taskType=${taskType}&taskId=${taskId}`
+                : `/TaskSolveAPage/TaskSolveAPage.html?taskType=${taskType}&taskId=${taskId}`;
         });
     });
+}
+
+function getRealTaskId(taskData) {
+    return taskData.taskId ||
+        taskData.TaskId ||
+        taskData.alphaBetaId ||
+        taskData.AlphaBetaId ||
+        taskData.fifteenPuzzleId ||
+        taskData.FifteenPuzzleId ||
+        taskData.id ||
+        taskData.Id;
 }
 
 function normalizeTaskType(taskType) {

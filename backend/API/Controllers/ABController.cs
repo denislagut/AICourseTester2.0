@@ -39,14 +39,39 @@ namespace AICourseTester.Controllers
 			_taskAnalysisPipelineService = taskAnalysisPipelineService;
 		}
 
+		[Authorize, HttpGet("MyTasks")]
+		public async Task<ActionResult<List<AlphaBetaDTO>>> GetMyAlphaBetaTasks()
+		{
+			var userId = _userManager.GetUserId(User);
+
+			var tasks = await _context.AlphaBeta
+				.Where(x => x.UserId == userId)
+				.OrderByDescending(x => x.Date)
+				.Select(ab => new AlphaBetaDTO
+				{
+					Id = ab.Id,
+					Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
+					Solution = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
+					UserSolution = ab.UserSolution == null ? null : ab.UserSolution.FromJson<List<ABNodeDTO>>(),
+					Path = ab.Path == null ? null : ab.Path.FromJson<int[]>(),
+					UserPath = ab.UserPath == null ? null : ab.UserPath.FromJson<int[]>(),
+					Date = ab.Date,
+					IsSolved = ab.IsSolved,
+					TreeHeight = ab.TreeHeight
+				})
+				.ToListAsync();
+
+			return Ok(tasks);
+		}
+
 		[Authorize]
-		[HttpPost("Debug/ResetSolved")]
-		public async Task<ActionResult> DebugResetSolved()
+		[HttpPost("Debug/ResetSolved/{id}")]
+		public async Task<ActionResult> DebugResetSolved(int id)
 		{
 			var userId = _userManager.GetUserId(User);
 
 			var ab = await _context.AlphaBeta
-				.FirstOrDefaultAsync(x => x.UserId == userId);
+				.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
 
 			if (ab == null)
 				return NotFound();
@@ -57,7 +82,6 @@ namespace AICourseTester.Controllers
 			ab.UserPrunedNodeIds = null;
 
 			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
-
 			await _context.SaveChangesAsync();
 
 			return Ok();
@@ -65,22 +89,58 @@ namespace AICourseTester.Controllers
 
 		[Authorize]
 		[HttpPost("Debug/AssignMe")]
-		public async Task<ActionResult> DebugAssignMe(int treeHeight = 3, int max = 15, int template = 1)
+		public async Task<ActionResult<object>> DebugAssignMe(int treeHeight = 3, int max = 15, int template = 1)
 		{
 			var userId = _userManager.GetUserId(User);
 
 			if (userId == null)
-			{
 				return Unauthorized();
-			}
 
-			if (await _assignTask(userId, treeHeight, max, template))
+			try
 			{
+				var ab = await CreateAlphaBetaTaskAsync(userId, treeHeight, max, template);
 				await _context.SaveChangesAsync();
-				return Ok();
+
+				return Ok(new { ab.Id });
+			}
+			catch (InvalidOperationException)
+			{
+				return NotFound();
+			}
+		}
+
+		private async Task<AlphaBeta> CreateAlphaBetaTaskAsync(
+			string userId,
+			int treeHeight,
+			int maxValue,
+			int template)
+		{
+			var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
+
+			if (!userExists)
+			{
+				throw new InvalidOperationException("Пользователь не найден.");
 			}
 
-			return NotFound();
+			var ab = new AlphaBeta
+			{
+				UserId = userId,
+				TreeHeight = treeHeight,
+				MaxValue = maxValue,
+				Template = template,
+				Problem = null,
+				Solution = null,
+				UserSolution = null,
+				UserPath = null,
+				UserPrunedNodeIds = null,
+				Path = null,
+				IsSolved = false,
+				Date = DateTime.Now
+			};
+
+			await _context.AlphaBeta.AddAsync(ab);
+
+			return ab;
 		}
 
 		[HttpGet("Train")]
@@ -101,51 +161,61 @@ namespace AICourseTester.Controllers
             return solution;
         }
 
-        [Authorize, HttpGet("Test")]
-        public async Task<ActionResult<AlphaBetaDTO>> GetABTest()
-        {
-            var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
-            if (ab == null)
-            {
-                return NotFound();
-            }
-            if (ab.IsSolved)
-            {
-                return new AlphaBetaDTO() {
-                    Id = ab.Id,
-                    Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
-                    Solution = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
-                    UserSolution = ab.UserSolution == null ? null : ab.UserSolution.FromJson<List<ABNodeDTO>>(),
-                    Path = ab.Path == null ? null : ab.Path.FromJson<int[]>(),
-                    UserPath = ab.UserPath == null ? null : ab.UserPath.FromJson<int[]>(),
-                    Date = ab.Date,
-                    IsSolved = ab.IsSolved
-                };
-            }
-            if (ab.Problem == null)
-            {
-                var problemInner = AlphaBetaService.GenerateTree3((int)ab.MaxValue, (int)ab.Template);
-                ab.Problem = problemInner.ToJson();
-                _context.Update(ab);
-                await _context.SaveChangesAsync();
-            }
-            return new AlphaBetaDTO()
-            {
-                Id = ab.Id,
-                Problem = ab.Problem.FromJson<ProblemTree<ABNode>>(),
-                Date = ab.Date,
-                IsSolved = ab.IsSolved
-            };
-        }
-
-		[Authorize, HttpPost("Test")]
-		public async Task<ActionResult<AlphaBetaSolutionDTO>> PostABTestVerify(AlphaBetaSolutionDTO userSolution)
+		[Authorize, HttpGet("Test/{id}")]
+		public async Task<ActionResult<AlphaBetaDTO>> GetABTest(int id)
 		{
-			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			var userId = _userManager.GetUserId(User);
+
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+
 			if (ab == null)
-			{
 				return NotFound();
+
+			if (ab.IsSolved)
+			{
+				return new AlphaBetaDTO()
+				{
+					Id = ab.Id,
+					Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
+					Solution = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
+					UserSolution = ab.UserSolution == null ? null : ab.UserSolution.FromJson<List<ABNodeDTO>>(),
+					Path = ab.Path == null ? null : ab.Path.FromJson<int[]>(),
+					UserPath = ab.UserPath == null ? null : ab.UserPath.FromJson<int[]>(),
+					Date = ab.Date,
+					IsSolved = ab.IsSolved
+				};
 			}
+
+			if (ab.Problem == null)
+			{
+				var problemInner = AlphaBetaService.GenerateTree3((int)ab.MaxValue, (int)ab.Template);
+				ab.Problem = problemInner.ToJson();
+				_context.Update(ab);
+				await _context.SaveChangesAsync();
+			}
+
+			return new AlphaBetaDTO()
+			{
+				Id = ab.Id,
+				Problem = ab.Problem.FromJson<ProblemTree<ABNode>>(),
+				Date = ab.Date,
+				IsSolved = ab.IsSolved
+			};
+		}
+
+		[Authorize, HttpPost("Test/{id}")]
+		public async Task<ActionResult<AlphaBetaSolutionDTO>> PostABTestVerify(
+			int id,
+			AlphaBetaSolutionDTO userSolution)
+		{
+			var userId = _userManager.GetUserId(User);
+
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+
+			if (ab == null)
+				return NotFound();
 
 			if (ab.IsSolved)
 			{
@@ -178,19 +248,21 @@ namespace AICourseTester.Controllers
 			return solution;
 		}
 
-		[Authorize, HttpPost("Test/Analyze")]
-		public async Task<ActionResult<ErrorAnalysisResult>> AnalyzeABTest(AlphaBetaSolutionDTO userSolution)
+		[Authorize, HttpPost("Test/{id}/Analyze")]
+		public async Task<ActionResult<ErrorAnalysisResult>> AnalyzeABTest(
+			int id,
+			AlphaBetaSolutionDTO userSolution)
 		{
-			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			var userId = _userManager.GetUserId(User);
+
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			if (ab.Problem == null)
-			{
 				return BadRequest("Задача не была сгенерирована.");
-			}
 
 			var problem = ab.Problem.FromJson<ProblemTree<ABNode>>();
 			var solution = AlphaBetaService.Search(problem);
@@ -200,14 +272,16 @@ namespace AICourseTester.Controllers
 			return Ok(analysisResult);
 		}
 
-		[Authorize, HttpGet("Test/Errors")]
-		public async Task<ActionResult<List<ErrorRecord>>> GetABTestErrors()
+		[Authorize, HttpGet("Test/{id}/Errors")]
+		public async Task<ActionResult<List<ErrorRecord>>> GetABTestErrors(int id)
 		{
-			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			var userId = _userManager.GetUserId(User);
+
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			var errors = await _context.ErrorRecords
 				.Where(e => e.AlphaBetaId == ab.Id)
@@ -243,14 +317,16 @@ namespace AICourseTester.Controllers
 			});
 		}
 
-		[Authorize, HttpGet("Test/Errors/Classified")]
-		public async Task<ActionResult<List<object>>> GetABTestClassifiedErrors()
+		[Authorize, HttpGet("Test/{id}/Errors/Classified")]
+		public async Task<ActionResult<List<object>>> GetABTestClassifiedErrors(int id)
 		{
-			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			var userId = _userManager.GetUserId(User);
+
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			var errors = await _context.ErrorRecords
 				.Where(e => e.AlphaBetaId == ab.Id)
@@ -287,14 +363,16 @@ namespace AICourseTester.Controllers
 			return Ok(errors);
 		}
 
-		[Authorize, HttpGet("Test/Errors/Aspects")]
-		public async Task<ActionResult<List<object>>> GetABTestErrorAspects()
+		[Authorize, HttpGet("Test/{id}/Errors/Aspects")]
+		public async Task<ActionResult<List<object>>> GetABTestErrorAspects(int id)
 		{
-			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+			var userId = _userManager.GetUserId(User);
+
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			var result = await _context.ErrorRecords
 				.Where(e => e.AlphaBetaId == ab.Id && e.ErrorTypeId != null)
@@ -328,16 +406,16 @@ namespace AICourseTester.Controllers
 			return Ok(result);
 		}
 
-		[Authorize, HttpGet("Test/KnowledgeGaps")]
-		public async Task<ActionResult<List<object>>> GetABTestKnowledgeGaps()
+		[Authorize, HttpGet("Test/{id}/KnowledgeGaps")]
+		public async Task<ActionResult<List<object>>> GetABTestKnowledgeGaps(int id)
 		{
+			var userId = _userManager.GetUserId(User);
+
 			var ab = await _context.AlphaBeta
-				.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
 
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			var gaps = await _context.KnowledgeGaps
 				.Where(g => g.AlphaBetaId == ab.Id)
@@ -362,16 +440,14 @@ namespace AICourseTester.Controllers
 		}
 
 		[DisableRateLimiting]
-		[Authorize(Roles = "Administrator"), HttpGet("Users/{userId}/KnowledgeGaps")]
-		public async Task<ActionResult<List<object>>> GetUserKnowledgeGaps(string userId)
+		[Authorize(Roles = "Administrator"), HttpGet("Users/{userId}/Tasks/{id}/KnowledgeGaps")]
+		public async Task<ActionResult<List<object>>> GetUserKnowledgeGaps(string userId, int id)
 		{
 			var ab = await _context.AlphaBeta
-				.FirstOrDefaultAsync(f => f.UserId == userId);
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
 
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			var gaps = await _context.KnowledgeGaps
 				.Where(g => g.AlphaBetaId == ab.Id)
@@ -417,16 +493,16 @@ namespace AICourseTester.Controllers
 			_context.ErrorRecords.RemoveRange(oldErrors);
 		}
 
-		[Authorize, HttpGet("Test/CausalLinks")]
-		public async Task<ActionResult<List<object>>> GetABTestCausalLinks()
+		[Authorize, HttpGet("Test/{id}/CausalLinks")]
+		public async Task<ActionResult<List<object>>> GetABTestCausalLinks(int id)
 		{
+			var userId = _userManager.GetUserId(User);
+
 			var ab = await _context.AlphaBeta
-				.FirstOrDefaultAsync(f => f.UserId == _userManager.GetUserId(User));
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
 
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			var links = await _context.CausalErrorLinks
 				.Where(l =>
@@ -440,7 +516,6 @@ namespace AICourseTester.Controllers
 					l.Id,
 					l.RelationType,
 					l.Weight,
-
 					SourceError = new
 					{
 						l.SourceError.Id,
@@ -448,7 +523,6 @@ namespace AICourseTester.Controllers
 						l.SourceError.Message,
 						l.SourceError.NodeId
 					},
-
 					TargetError = new
 					{
 						l.TargetError.Id,
@@ -464,11 +538,11 @@ namespace AICourseTester.Controllers
 
 		[DisableRateLimiting]
 		[Authorize(Roles = "Administrator")]
-		[HttpGet("Users/{userId}/CausalLinks")]
-		public async Task<ActionResult<List<object>>> GetUserCausalLinks(string userId)
+		[HttpGet("Users/{userId}/Tasks/{id}/CausalLinks")]
+		public async Task<ActionResult<List<object>>> GetUserCausalLinks(string userId, int id)
 		{
 			var ab = await _context.AlphaBeta
-				.FirstOrDefaultAsync(f => f.UserId == userId);
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
 
 			if (ab == null)
 				return NotFound();
@@ -507,34 +581,29 @@ namespace AICourseTester.Controllers
 
 		private async Task<bool> _assignTask(string userId, int treeHeight, int maxValue, int template)
 		{
-			if ((await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)) == null)
-			{
+			var userExists = await _context.Users.AnyAsync(u => u.Id == userId);
+
+			if (!userExists)
 				return false;
-			}
 
-			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
-			if (ab == null)
+			var ab = new AlphaBeta
 			{
-				_context.AlphaBeta.Add(new AlphaBeta() { UserId = userId });
-				await _context.SaveChangesAsync();
-				ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
-			}
+				UserId = userId,
+				TreeHeight = treeHeight,
+				UserSolution = null,
+				UserPath = null,
+				UserPrunedNodeIds = null,
+				Solution = null,
+				Path = null,
+				Problem = null,
+				IsSolved = false,
+				Date = DateTime.Now,
+				Template = template,
+				MaxValue = maxValue
+			};
 
-			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
+			await _context.AlphaBeta.AddAsync(ab);
 
-			ab.TreeHeight = treeHeight;
-			ab.UserSolution = null;
-			ab.UserPath = null;
-			ab.UserPrunedNodeIds = null;
-			ab.Solution = null;
-			ab.Path = null;
-			ab.Problem = null;
-			ab.IsSolved = false;
-			ab.Date = DateTime.Now;
-			ab.Template = template;
-			ab.MaxValue = maxValue;
-
-			_context.AlphaBeta.Update(ab);
 			return true;
 		}
 
@@ -575,76 +644,114 @@ namespace AICourseTester.Controllers
             return Ok();
         }
 
-        [DisableRateLimiting]
-        [Authorize(Roles = "Administrator"), HttpGet("Users/")]
-        public async Task<ActionResult<AlphaBetaTaskDTO[]?>> GetUsers()
-        {
-            var ab = _usersService.UserLeftJoinGroup().Join(_context.AlphaBeta,
-                u => u.Id,
-                ab => ab.UserId,
-                (u, ab) => new AlphaBetaTaskDTO
-                {
-                    Task = new AlphaBetaDTO 
-                    {
-                        Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
-                        TreeHeight = ab.TreeHeight,
-                        Date = ab.Date,
-                        IsSolved = ab.IsSolved
-                    },
-                    User = u
-                });
-            return await ab.ToArrayAsync();
-        }
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator"), HttpGet("Users/")]
+		public async Task<ActionResult<AlphaBetaTaskDTO[]?>> GetUsers()
+		{
+			var ab = _usersService.UserLeftJoinGroup().Join(_context.AlphaBeta,
+				u => u.Id,
+				ab => ab.UserId,
+				(u, ab) => new AlphaBetaTaskDTO
+				{
+					Task = new AlphaBetaDTO
+					{
+						Id = ab.Id,
+						Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
+						TreeHeight = ab.TreeHeight,
+						Date = ab.Date,
+						IsSolved = ab.IsSolved
+					},
+					User = u
+				});
 
-        [DisableRateLimiting]
-        [Authorize(Roles = "Administrator"), HttpGet("Users/{userId}/")]
-        public async Task<ActionResult<AlphaBetaTaskDTO>> GetUser(string userId)
-        {
-            var ab = _usersService.UserLeftJoinGroup(userId).Join(_context.AlphaBeta,
-                u => u.Id,
-                ab => ab.UserId,
-                (u, ab) => new AlphaBetaTaskDTO
-                {
-                    Task = new AlphaBetaDTO
-                    {
-                        Id = ab.Id,
-                        Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
-                        Solution = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
-                        UserSolution = ab.UserSolution == null ? null : ab.UserSolution.FromJson<List<ABNodeDTO>>(),
-                        Path = ab.Path == null ? null : ab.Path.FromJson<int[]>(),
-                        UserPath = ab.UserPath == null ? null : ab.UserPath.FromJson<int[]>(),
-                        Date = ab.Date,
-                        IsSolved = ab.IsSolved,
-                        TreeHeight = ab.TreeHeight,
-                    },
-                    User = u
-                });
-            var task = await ab.FirstOrDefaultAsync();
-            return task == null ? NotFound() : task;
-        }
+			return await ab
+				.OrderByDescending(x => x.Task.Date)
+				.ToArrayAsync();
+		}
 
-        [DisableRateLimiting]
-        [Authorize(Roles = "Administrator"), HttpPut("Users/{userId}/")]
-        public async Task<ActionResult> UpdateABTest(string userId, int? height = null, int? maxValue = null, int? template = null, bool generate = false)
-        {
-            var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
-            if (ab == null)
-            {
-                if (_context.Users.FirstOrDefault(f => f.Id == userId) != null)
-                {
-                    _context.AlphaBeta.Add(new AlphaBeta() { UserId = userId });
-                    _context.SaveChanges();
-                    ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
-                }
-                else
-                {
-                    return NotFound();
-                }
-            }
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator"), HttpGet("Users/{userId}/")]
+		public async Task<ActionResult<AlphaBetaTaskDTO[]>> GetUserTasks(string userId)
+		{
+			var tasks = _usersService.UserLeftJoinGroup(userId).Join(_context.AlphaBeta,
+				u => u.Id,
+				ab => ab.UserId,
+				(u, ab) => new AlphaBetaTaskDTO
+				{
+					Task = new AlphaBetaDTO
+					{
+						Id = ab.Id,
+						Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
+						Solution = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
+						UserSolution = ab.UserSolution == null ? null : ab.UserSolution.FromJson<List<ABNodeDTO>>(),
+						Path = ab.Path == null ? null : ab.Path.FromJson<int[]>(),
+						UserPath = ab.UserPath == null ? null : ab.UserPath.FromJson<int[]>(),
+						Date = ab.Date,
+						IsSolved = ab.IsSolved,
+						TreeHeight = ab.TreeHeight,
+					},
+					User = u
+				});
+
+			var result = await tasks
+				.OrderByDescending(x => x.Task.Date)
+				.ToArrayAsync();
+
+			return result.Length == 0 ? NotFound() : result;
+		}
+
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator"), HttpGet("Users/{userId}/Tasks/{id}")]
+		public async Task<ActionResult<AlphaBetaTaskDTO>> GetUserTask(string userId, int id)
+		{
+			var task = await _usersService.UserLeftJoinGroup(userId).Join(_context.AlphaBeta,
+				u => u.Id,
+				ab => ab.UserId,
+				(u, ab) => new AlphaBetaTaskDTO
+				{
+					Task = new AlphaBetaDTO
+					{
+						Id = ab.Id,
+						Problem = ab.Problem == null ? null : ab.Problem.FromJson<ProblemTree<ABNode>>(),
+						Solution = ab.Solution == null ? null : ab.Solution.FromJson<List<ABNodeDTO>>(),
+						UserSolution = ab.UserSolution == null ? null : ab.UserSolution.FromJson<List<ABNodeDTO>>(),
+						Path = ab.Path == null ? null : ab.Path.FromJson<int[]>(),
+						UserPath = ab.UserPath == null ? null : ab.UserPath.FromJson<int[]>(),
+						Date = ab.Date,
+						IsSolved = ab.IsSolved,
+						TreeHeight = ab.TreeHeight,
+					},
+					User = u
+				})
+				.FirstOrDefaultAsync(x => x.Task.Id == id);
+
+			return task == null ? NotFound() : task;
+		}
+
+		[DisableRateLimiting]
+		[Authorize(Roles = "Administrator"), HttpPut("Users/{userId}/Tasks/{id}")]
+		public async Task<ActionResult> UpdateABTest(
+	string userId,
+	int id,
+	int? height = null,
+	int? maxValue = null,
+	int? template = null,
+	bool generate = false)
+		{
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
+
+			if (ab == null)
+				return NotFound();
+
 			if (height != null)
-			{
-				ab.TreeHeight = (int)height;
-			}
+				ab.TreeHeight = height.Value;
+
+			if (maxValue != null)
+				ab.MaxValue = maxValue;
+
+			if (template != null)
+				ab.Template = template;
 
 			ab.Problem = null;
 			ab.Solution = null;
@@ -654,12 +761,10 @@ namespace AICourseTester.Controllers
 			ab.Path = null;
 			ab.IsSolved = false;
 			ab.Date = DateTime.Now;
-			ab.MaxValue = maxValue;
-			ab.Template = template;
 
 			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
 
-			if (generate == true)
+			if (generate)
 			{
 				var tree = AlphaBetaService.GenerateTree3((int)ab.MaxValue, (int)ab.Template);
 				ab.Problem = tree.ToJson();
@@ -667,19 +772,19 @@ namespace AICourseTester.Controllers
 
 			_context.AlphaBeta.Update(ab);
 			await _context.SaveChangesAsync();
+
 			return Ok();
 		}
 
 		[DisableRateLimiting]
-		[Authorize(Roles = "Administrator"), HttpDelete("Users/{userId}")]
-		public async Task<ActionResult> DeleteABTest(string userId)
+		[Authorize(Roles = "Administrator"), HttpDelete("Users/{userId}/Tasks/{id}")]
+		public async Task<ActionResult> DeleteABTest(string userId, int id)
 		{
-			var ab = await _context.AlphaBeta.FirstOrDefaultAsync(f => f.UserId == userId);
+			var ab = await _context.AlphaBeta
+				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);
 
 			if (ab == null)
-			{
 				return NotFound();
-			}
 
 			await RemoveAlphaBetaAnalysisDataAsync(ab.Id);
 

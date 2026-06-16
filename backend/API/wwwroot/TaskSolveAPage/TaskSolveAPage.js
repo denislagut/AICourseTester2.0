@@ -1,3 +1,5 @@
+let currentTaskId = null;
+let currentViewUserId = null;
 document.addEventListener('DOMContentLoaded', async function () {
     if (!restrictAccess()) return;
 
@@ -24,9 +26,19 @@ document.addEventListener('DOMContentLoaded', async function () {
         const urlParams = new URLSearchParams(window.location.search);
         const taskId = urlParams.get('taskId');
         const userId = urlParams.get('userId');
+        currentTaskId = taskId;
+        currentViewUserId = userId;
         const taskType = urlParams.get('taskType');
         const isViewMode = urlParams.get('view') === 'true';
         const isTrainingMode = taskType === 'train';
+
+        if (!isTrainingMode && !taskId) {
+            alert('Не передан идентификатор задания');
+            window.location.href = userId
+                ? "/ProfileTeacherPage/ProfileTeacherPage.html"
+                : "/ProfileStudentPage/ProfileStudentPage.html";
+            return;
+        }
 
         console.log('Параметры URL:', { taskId, userId, taskType, isViewMode, isTrainingMode });
 
@@ -136,8 +148,8 @@ async function loadCausalLinks() {
         const isViewMode = urlParams.get('view') === 'true';
 
         const causalLinksUrl = isViewMode && userId
-            ? `${apiHost}/A/Users/${userId}/CausalLinks`
-            : `${apiHost}/A/Test/CausalLinks`;
+            ? `${apiHost}/A/FifteenPuzzle/Users/${userId}/Tasks/${currentTaskId}/CausalLinks`
+            : `${apiHost}/A/FifteenPuzzle/Test/${currentTaskId}/CausalLinks`;
 
         const response = await fetch(causalLinksUrl, {
             method: 'GET',
@@ -281,9 +293,9 @@ async function fetchTaskData(taskId, userId, isViewMode, isTrainingMode, setting
             url += `?${params.toString()}`;
         }
     } else if (isViewMode) {
-        url = `${apiHost}/A/FifteenPuzzle/Users/${userId}`;
+        url = `${apiHost}/A/FifteenPuzzle/Users/${userId}/Tasks/${taskId}`;
     } else {
-        url = `${apiHost}/A/FifteenPuzzle/Test`;
+        url = `${apiHost}/A/FifteenPuzzle/Test/${taskId}`;
     }
 
     console.log('URL запроса:', url);
@@ -613,7 +625,10 @@ function setupEventListeners(taskData, isViewMode, isTrainingMode) {
                         userSolution,
                         solution: response
                     });
-                    await loadCausalLinks();
+
+                    if (!isTrainingMode) {
+                        await loadCausalLinks();
+                    }
 
                 } catch (error) {
                     const messageElement = document.getElementById('solution-message');
@@ -749,7 +764,7 @@ async function submitSolution(userSolution, isTrainingMode, taskData) {
 
     let url = isTrainingMode
         ? `${apiHost}/A/FifteenPuzzle/Train`
-        : `${apiHost}/A/FifteenPuzzle/Test`;
+        : `${apiHost}/A/FifteenPuzzle/Test/${currentTaskId}`;
 
     if (isTrainingMode) {
         const heuristic = taskData.settings?.heuristic || 1;
