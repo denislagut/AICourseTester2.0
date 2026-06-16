@@ -289,6 +289,11 @@ namespace AICourseTester.Services
         }
         public static void PrepareTree(ProblemTree<ANode> tree)
         {
+            if (tree.Head == null)
+            {
+                throw new InvalidOperationException("FifteenPuzzle tree root is not set.");
+            }
+
             tree.Head.depth = 0;
             _prepareNode(tree.Head, null);
         }
@@ -434,7 +439,7 @@ namespace AICourseTester.Services
         private static int GetTreeIters(ProblemTree<ANode> tree)
         {
             int iters = 0;
-            ANode curr = tree.Head;
+            ANode curr = tree.Head ?? throw new InvalidOperationException("FifteenPuzzle tree root is not set.");
             while (curr.SubNodes != null)
             {
                 iters++;
@@ -447,7 +452,7 @@ namespace AICourseTester.Services
         {
             OrderedSet<ANode> openNodes = new(state => state.F)
             {
-                tree.Head
+                tree.Head ?? throw new InvalidOperationException("FifteenPuzzle tree root is not set.")
             };
             tree.Head.G = 0;
             tree.Head.H = h(tree.Head);
@@ -538,7 +543,7 @@ namespace AICourseTester.Services
             {
                 node.SubNodesIds = new();
             }
-            foreach (var subNode in node.SubNodes)
+            foreach (var subNode in node.SubNodes ?? Enumerable.Empty<ANode>())
             {
                 node.SubNodesIds.Add(id + 1);
                 id = _generateNodes(subNode, height - 1, ignore, id + 1);

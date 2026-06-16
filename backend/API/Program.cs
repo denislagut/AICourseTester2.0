@@ -82,7 +82,10 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 
-string connString = Environment.GetEnvironmentVariable("CONNECTION_STRING") ?? builder.Configuration.GetConnectionString("main_db");
+string connString = Environment.GetEnvironmentVariable("CONNECTION_STRING")
+	?? builder.Configuration.GetConnectionString("main_db")
+	?? builder.Configuration.GetConnectionString("DefaultConnection")
+	?? throw new InvalidOperationException("Provide CONNECTION_STRING or a configured database connection string.");
 builder.Services.AddDbContext<MainDbContext>(options =>
 {
     options

@@ -41,7 +41,7 @@ namespace AICourseTester.Services
 					targetType: "Student",
 					knowledgeAspectId: x.Gap.KnowledgeAspectId,
 					aspectName: x.Aspect!.Name,
-					topicName: x.Aspect.TopicName,
+					topicName: x.Aspect.Topic == null ? null : x.Aspect.Topic.Name,
 					gapScore: x.Gap.GapScore,
 					relatedErrorCount: x.Gap.ErrorCount,
 					affectedStudentsCount: null))
@@ -99,7 +99,7 @@ namespace AICourseTester.Services
 				{
 					x.Gap.KnowledgeAspectId,
 					AspectName = x.Aspect!.Name,
-					x.Aspect.TopicName
+					TopicName = x.Aspect.Topic == null ? null : x.Aspect.Topic.Name
 				})
 				.Select(g => BuildRecommendation(
 					targetType: "Group",
@@ -251,6 +251,7 @@ namespace AICourseTester.Services
 			var gaps = await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
 				.Where(g => userIds.Contains(g.UserId))
 				.ToListAsync();
 
@@ -262,6 +263,7 @@ namespace AICourseTester.Services
 			var legacyGaps = await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
 				.Include(g => g.AlphaBeta)
 				.Include(g => g.FifteenPuzzle)
 				.Where(g =>
@@ -278,7 +280,7 @@ namespace AICourseTester.Services
 				.GroupBy(g => new
 				{
 					g.UserId,
-					g.TaskType,
+					g.TaskTypeId,
 					g.AlphaBetaId,
 					g.FifteenPuzzleId,
 					g.KnowledgeAspectId
@@ -359,6 +361,7 @@ namespace AICourseTester.Services
 
 			return await _context.KnowledgeAspects
 				.AsNoTracking()
+				.Include(a => a.Topic)
 				.Where(a => aspectIds.Contains(a.Id))
 				.ToDictionaryAsync(a => a.Id);
 		}

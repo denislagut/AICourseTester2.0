@@ -14,6 +14,11 @@ namespace AICourseTester.Services
 		{
 			var result = new ErrorAnalysisResult();
 
+			if (problem.Head == null)
+			{
+				throw new InvalidOperationException("AlphaBeta tree root is not set.");
+			}
+
 			var nodeMeta = BuildNodeMeta(problem.Head);
 
 			AnalyzeNodes(userSolution, correctSolution, nodeMeta, result);
@@ -459,12 +464,13 @@ namespace AICourseTester.Services
 			var allNodeIds = nodeMeta.Keys.ToHashSet();
 			var correctNodeIds = correctNodes.Keys.ToHashSet();
 			var expectedPrunedIds = allNodeIds.Except(correctNodeIds).ToHashSet();
+			var root = problem.Head ?? throw new InvalidOperationException("AlphaBeta tree root is not set.");
 
-			AnalyzeMinLevelConfusion(problem.Head, userNodes, correctNodes, nodeMeta, result);
-			AnalyzeRootMaxConfusion(problem.Head, userNodes, correctNodes, nodeMeta, result);
+			AnalyzeMinLevelConfusion(root, userNodes, correctNodes, nodeMeta, result);
+			AnalyzeRootMaxConfusion(root, userNodes, correctNodes, nodeMeta, result);
 			AnalyzePathNotMaximizingRootValue(userPath, correctPath, userNodes, correctNodes, result);
-			AnalyzePruningTiming(problem.Head, userPrunedIds, expectedPrunedIds, nodeMeta, result);
-			AnalyzeValueAffectedByWrongPruning(problem.Head, userNodes, correctNodes, userPrunedIds, nodeMeta, result);
+			AnalyzePruningTiming(root, userPrunedIds, expectedPrunedIds, nodeMeta, result);
+			AnalyzeValueAffectedByWrongPruning(root, userNodes, correctNodes, userPrunedIds, nodeMeta, result);
 			AnalyzeCombinedSemanticCases(result);
 		}
 		private void AnalyzeMinLevelConfusion(

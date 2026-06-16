@@ -1,6 +1,7 @@
 ﻿using AICourseTester.Data;
 using AICourseTester.DTO;
 using AICourseTester.Models;
+using AICourseTester.Models.Analysis;
 using AICourseTester.Services;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Authorization;
@@ -47,6 +48,11 @@ namespace AICourseTester.Controllers
         public async Task<ActionResult<UserDTO[]>> GetUsers(bool getSelf = false)
         {
             var reqUser = await _userManager.GetUserAsync(User);
+            if (reqUser == null)
+            {
+                return Unauthorized();
+            }
+
             var roles = await _userManager.GetRolesAsync(reqUser);
             var isAdmin = roles.FirstOrDefault(r => r == "Administrator") != null;
             if (getSelf || !isAdmin)
@@ -75,7 +81,7 @@ namespace AICourseTester.Controllers
                 .AsNoTracking()
                 .Where(run =>
                     run.UserId == userId &&
-                    run.Status == "Completed" &&
+                    run.StatusId == LookupIds.AnalysisStatusId("Completed") &&
                     run.CompletedAt.HasValue)
                 .OrderByDescending(run => run.CompletedAt)
                 .ThenByDescending(run => run.Id)
@@ -85,9 +91,9 @@ namespace AICourseTester.Controllers
                 .Select(run => new StudentTaskHistoryDTO
                 {
                     Id = run.Id,
-                    TaskId = run.TaskType == "AlphaBeta" ? run.AlphaBetaId : run.FifteenPuzzleId,
-                    TaskType = run.TaskType == "FifteenPuzzle" ? "a-star" : "min-max",
-                    TaskName = run.TaskType == "FifteenPuzzle" ? "Пятнашки A*" : "min-max алгоритм",
+                    TaskId = run.TaskTypeId == LookupIds.TaskTypeId("AlphaBeta") ? run.AlphaBetaId : run.FifteenPuzzleId,
+                    TaskType = run.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") ? "a-star" : "min-max",
+                    TaskName = run.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") ? "Пятнашки A*" : "min-max алгоритм",
                     Date = run.CompletedAt!.Value,
                     Status = "Проверено",
                     IsSolved = true,
@@ -104,7 +110,7 @@ namespace AICourseTester.Controllers
             var analysisRuns = await _context.AnalysisRuns
                 .AsNoTracking()
                 .Where(run =>
-                    run.Status == "Completed" &&
+                    run.StatusId == LookupIds.AnalysisStatusId("Completed") &&
                     run.CompletedAt.HasValue)
                 .OrderByDescending(run => run.CompletedAt)
                 .ThenByDescending(run => run.Id)
@@ -149,9 +155,9 @@ namespace AICourseTester.Controllers
                     return new TeacherTaskHistoryDTO
                     {
                         Id = run.Id,
-                        TaskId = run.TaskType == "AlphaBeta" ? run.AlphaBetaId : run.FifteenPuzzleId,
-                        TaskType = run.TaskType == "FifteenPuzzle" ? "a-star" : "min-max",
-                        TaskName = run.TaskType == "FifteenPuzzle" ? "Пятнашки A*" : "min-max алгоритм",
+                        TaskId = run.TaskTypeId == LookupIds.TaskTypeId("AlphaBeta") ? run.AlphaBetaId : run.FifteenPuzzleId,
+                        TaskType = run.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") ? "a-star" : "min-max",
+                        TaskName = run.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") ? "Пятнашки A*" : "min-max алгоритм",
                         UserId = run.UserId,
                         UserName = fullName,
                         GroupId = userGroup?.GroupId,
@@ -183,11 +189,21 @@ namespace AICourseTester.Controllers
         public async Task<ActionResult<IdentityResult>> UpdateUser([FromForm] UserModifyDTO userNewData, string? userId)
         {
             var reqUser = await _userManager.GetUserAsync(User);
+            if (reqUser == null)
+            {
+                return Unauthorized();
+            }
+
             var roles = await _userManager.GetRolesAsync(reqUser);
             if (roles.FirstOrDefault(r => r == "Administrator") == null)
             {
                 userId = reqUser.Id;
             }
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return BadRequest();
+            }
+
             var user = await _context.Users.FirstOrDefaultAsync(f => f.Id == userId);
             if (user == null)
             {
@@ -240,7 +256,7 @@ namespace AICourseTester.Controllers
         }
 
         [Authorize(Roles = "Administrator"), HttpDelete()]
-        public async Task<ActionResult> DeleteUser([System.Web.Http.FromUri] string? userId, [System.Web.Http.FromUri] int? groupId, string[]? userIds)
+        public async Task<ActionResult> DeleteUser([FromQuery] string? userId, [FromQuery] int? groupId, [FromQuery] string[]? userIds)
         {
             if (groupId != null)
             {
@@ -326,7 +342,7 @@ namespace AICourseTester.Controllers
         }
 
         [Authorize(Roles = "Administrator"), HttpDelete("Groups")]
-        public async Task<ActionResult> DeleteGroup([System.Web.Http.FromUri] int? id, int[]? ids)
+        public async Task<ActionResult> DeleteGroup([FromQuery] int? id, [FromQuery] int[]? ids)
         {
             if (ids != null)
             {

@@ -1,6 +1,7 @@
 using AICourseTester.Data;
 using AICourseTester.DTO;
 using AICourseTester.Models;
+using AICourseTester.Models.Analysis;
 using AICourseTester.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -104,7 +105,7 @@ namespace AICourseTester.Services
 				{
 					g.KnowledgeAspectId,
 					AspectName = g.KnowledgeAspect.Name,
-					g.KnowledgeAspect.TopicName
+					TopicName = g.KnowledgeAspect.Topic == null ? null : g.KnowledgeAspect.Topic.Name
 				})
 				.Select(g => new TopKnowledgeGapDTO
 				{
@@ -141,13 +142,13 @@ namespace AICourseTester.Services
 			return await _context.KnowledgeAspects
 				.AsNoTracking()
 				.Where(a => a.IsActive)
-				.OrderBy(a => a.TopicName)
+				.OrderBy(a => a.Topic == null ? null : a.Topic.Name)
 				.ThenBy(a => a.Name)
 				.Select(a => new KnowledgeAspectReferenceDTO
 				{
 					Id = a.Id,
 					Name = a.Name,
-					Topic = a.TopicName,
+					Topic = a.Topic == null ? null : a.Topic.Name,
 					Description = a.Description
 				})
 				.ToListAsync();
@@ -621,6 +622,7 @@ namespace AICourseTester.Services
 				: await _context.KnowledgeGaps
 					.AsNoTracking()
 					.Include(g => g.KnowledgeAspect)
+						.ThenInclude(ka => ka.Topic)
 					.Where(g => g.AnalysisRunId.HasValue && periodAnalysisRunIds.Contains(g.AnalysisRunId.Value))
 					.ToListAsync();
 
@@ -642,6 +644,7 @@ namespace AICourseTester.Services
 			var fallbackGaps = await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
 				.Where(g => !g.AnalysisRunId.HasValue && userIds.Contains(g.UserId))
 				.ToListAsync();
 			periodGaps.AddRange(fallbackGaps
@@ -968,6 +971,7 @@ namespace AICourseTester.Services
 			var gaps = await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
 				.Include(g => g.AlphaBeta)
 				.Include(g => g.FifteenPuzzle)
 				.ToListAsync();
@@ -980,6 +984,7 @@ namespace AICourseTester.Services
 			return await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
 				.Include(g => g.AlphaBeta)
 				.Include(g => g.FifteenPuzzle)
 				.Where(g => userIds.Contains(g.UserId))
@@ -992,7 +997,7 @@ namespace AICourseTester.Services
 				.GroupBy(g => new
 				{
 					g.UserId,
-					g.TaskType,
+					g.TaskTypeId,
 					g.AlphaBetaId,
 					g.FifteenPuzzleId,
 					g.KnowledgeAspectId
@@ -1016,7 +1021,7 @@ namespace AICourseTester.Services
 					.Where(previous =>
 						previous.Id != gap.Id &&
 						previous.UserId == gap.UserId &&
-						previous.TaskType == gap.TaskType &&
+						previous.TaskTypeId == gap.TaskTypeId &&
 						previous.KnowledgeAspectId == gap.KnowledgeAspectId &&
 						(!gap.AnalysisRunId.HasValue ||
 						 !previous.AnalysisRunId.HasValue ||
@@ -1054,7 +1059,7 @@ namespace AICourseTester.Services
 				.Where(run =>
 					userIds.Contains(run.UserId) &&
 					run.CompletedAt.HasValue &&
-					run.Status == "Completed")
+					run.StatusId == LookupIds.AnalysisStatusId("Completed"))
 				.OrderByDescending(run => run.CompletedAt)
 				.Select(run => run.CompletedAt)
 				.FirstOrDefaultAsync();
@@ -1199,7 +1204,7 @@ namespace AICourseTester.Services
 				{
 					g.KnowledgeAspectId,
 					AspectName = g.KnowledgeAspect.Name,
-					g.KnowledgeAspect.TopicName
+					TopicName = g.KnowledgeAspect.Topic == null ? null : g.KnowledgeAspect.Topic.Name
 				})
 				.Select(g => new TopKnowledgeGapDTO
 				{
@@ -1231,27 +1236,19 @@ namespace AICourseTester.Services
 				{
 					gap.KnowledgeAspectId,
 					AspectName = gap.KnowledgeAspect.Name,
-					gap.KnowledgeAspect.TopicName
+					TopicName = gap.KnowledgeAspect.Topic == null ? null : gap.KnowledgeAspect.Topic.Name
 				})
 				.Select(group =>
 				{
-					var current = group.Average(gap => gap.GapScore);
-					var previousValues = group
-						.Where(gap => gap.PreviousGapScore.HasValue)
-						.Select(gap => gap.PreviousGapScore!.Value)
-						.ToList();
-					double? previous = previousValues.Count == 0
-						? null
-						: previousValues.Average();
-					var deltaValues = group
-						.Where(gap => gap.GapScoreDelta.HasValue)
-						.Select(gap => gap.GapScoreDelta!.Value)
-						.ToList();
-					var delta = deltaValues.Count > 0
-						? deltaValues.Average()
-						: previous.HasValue
-							? current - previous.Value
-							: 0;
+					var latest = group
+						.OrderByDescending(gap => gap.AnalysisRunId.HasValue)
+						.ThenByDescending(gap => gap.CreatedAt)
+						.ThenByDescending(gap => gap.AnalysisRunId ?? 0)
+						.ThenByDescending(gap => gap.Id)
+						.First();
+					var current = latest.GapScore;
+					var previous = latest.PreviousGapScore;
+					var delta = latest.GapScoreDelta ?? (previous.HasValue ? current - previous.Value : 0);
 
 					return new KnowledgeGapProgressDTO
 					{
@@ -1261,8 +1258,8 @@ namespace AICourseTester.Services
 						PreviousGapScore = previous.HasValue ? Math.Round(previous.Value, 2) : null,
 						CurrentGapScore = Math.Round(current, 2),
 						GapScoreDelta = Math.Round(delta, 2),
-						Trend = GetDominantTrend(group),
-						Level = GetDominantLevel(group)
+						Trend = string.IsNullOrWhiteSpace(latest.Trend) ? BuildTrend(delta) : latest.Trend,
+						Level = string.IsNullOrWhiteSpace(latest.Level) ? "Low" : latest.Level
 					};
 				})
 				.OrderByDescending(item => Math.Abs(item.GapScoreDelta))

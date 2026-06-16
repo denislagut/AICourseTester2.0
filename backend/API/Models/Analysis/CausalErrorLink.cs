@@ -1,21 +1,27 @@
-﻿namespace AICourseTester.Models.Analysis
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace AICourseTester.Models.Analysis
 {
 	public class CausalErrorLink
 	{
 		public int Id { get; set; }
 
-		// Причина
 		public int SourceErrorId { get; set; }
 		public ErrorRecord SourceError { get; set; } = null!;
 
-		// Следствие
 		public int TargetErrorId { get; set; }
 		public ErrorRecord TargetError { get; set; } = null!;
 
-		// Тип связи
-		public string RelationType { get; set; } = "CAUSES";
+		public int RelationTypeId { get; set; }
+		public CausalRelationType RelationTypeRef { get; set; } = null!;
 
-		// Насколько сильное влияние
+		[NotMapped]
+		public string RelationType
+		{
+			get => RelationTypeRef?.Code ?? string.Empty;
+			set => RelationTypeId = LookupIds.CausalRelationTypeId(value);
+		}
+
 		public double Weight { get; set; } = 1.0;
 	}
 }

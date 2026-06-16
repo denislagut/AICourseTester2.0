@@ -1,4 +1,4 @@
-﻿using AICourseTester.Data;
+using AICourseTester.Data;
 using AICourseTester.Models;
 using AICourseTester.Models.Analysis;
 using AICourseTester.Services.Interfaces;
@@ -253,7 +253,7 @@ namespace AICourseTester.Services
 			await EnsureReferenceDataAsync();
 
 			var errors = await _context.ErrorRecords
-				.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fifteenPuzzleId)
+				.Where(e => e.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") && e.FifteenPuzzleId == fifteenPuzzleId)
 				.ToListAsync();
 
 			if (errors.Count == 0)
@@ -275,7 +275,7 @@ namespace AICourseTester.Services
 			List<ErrorRecord> allErrors,
 			List<ErrorType> errorTypes)
 		{
-			if (error.TaskType == "FifteenPuzzle")
+			if (error.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle"))
 			{
 				return MatchFifteenPuzzleErrorType(error, allErrors, errorTypes);
 			}
@@ -692,7 +692,36 @@ namespace AICourseTester.Services
 				}
 			};
 
-			var existingAspects = await _context.KnowledgeAspects.ToListAsync();
+			var topicNames = requiredAspects
+				.Select(aspect => aspect.TopicName)
+				.Where(topicName => !string.IsNullOrWhiteSpace(topicName))
+				.Distinct()
+				.ToList();
+
+			var topics = await _context.KnowledgeTopics
+				.Where(topic => topicNames.Contains(topic.Name))
+				.ToListAsync();
+
+			foreach (var topicName in topicNames)
+			{
+				if (topics.Any(topic => topic.Name == topicName))
+				{
+					continue;
+				}
+
+				var topic = new KnowledgeTopic { Name = topicName! };
+				_context.KnowledgeTopics.Add(topic);
+				topics.Add(topic);
+			}
+
+			foreach (var requiredAspect in requiredAspects)
+			{
+				requiredAspect.Topic = topics.FirstOrDefault(topic => topic.Name == requiredAspect.TopicName);
+			}
+
+			var existingAspects = await _context.KnowledgeAspects
+				.Include(aspect => aspect.Topic)
+				.ToListAsync();
 
 			foreach (var requiredAspect in requiredAspects)
 			{
@@ -704,7 +733,7 @@ namespace AICourseTester.Services
 				else
 				{
 					/*existing.Description = requiredAspect.Description;
-					existing.TopicName = requiredAspect.TopicName;
+					existing.Topic = requiredAspect.Topic;
 					existing.IsActive = requiredAspect.IsActive;*/
 					continue;
 				}

@@ -1,5 +1,6 @@
-﻿using AICourseTester.Data;
+using AICourseTester.Data;
 using AICourseTester.Models;
+using AICourseTester.Models.Analysis;
 using AICourseTester.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -25,7 +26,7 @@ namespace AICourseTester.Services
 				var previousGap = await _context.KnowledgeGaps
 					.Where(g =>
 						g.UserId == userId &&
-						g.TaskType == taskType &&
+						g.TaskTypeId == LookupIds.TaskTypeId(taskType) &&
 						g.KnowledgeAspectId == gap.KnowledgeAspectId &&
 						g.AnalysisRunId != currentAnalysisRunId)
 					.OrderByDescending(g => g.CreatedAt)

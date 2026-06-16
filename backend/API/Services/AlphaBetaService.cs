@@ -10,6 +10,11 @@ namespace AICourseTester.Services
 
         public static void PrepareTree(ProblemTree<ABNode> tree)
         {
+            if (tree.Head == null)
+            {
+                throw new InvalidOperationException("AlphaBeta tree root is not set.");
+            }
+
             tree.Head.depth = 0;
             _prepareNode(tree.Head, null);
         }
@@ -36,8 +41,8 @@ namespace AICourseTester.Services
             PrepareTree(tree);
             List<ABNodeDTO> solution = new List<ABNodeDTO>();
             List<int> path = new List<int>();
-            _searchSubNode(tree.Head, solution);
-            _correctSubNode(tree.Head, path);
+            _searchSubNode(tree.Head!, solution);
+            _correctSubNode(tree.Head!, path);
             return new AlphaBetaSolutionDTO() { Nodes = solution, Path = path.ToArray() };
         }
 
@@ -81,6 +86,11 @@ namespace AICourseTester.Services
                 return;
             }
             var chosenNode = node.depth % 2 == 1 ? node.SubNodes.MinBy(sn => sn.A) : node.SubNodes.MaxBy(sn => sn.B);
+            if (chosenNode == null)
+            {
+                return;
+            }
+
             path.Add(chosenNode.Id);
             _correctSubNode(chosenNode, path);
         }

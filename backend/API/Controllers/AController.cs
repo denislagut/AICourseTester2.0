@@ -79,7 +79,7 @@ namespace AICourseTester.Controllers
         }
 
         [HttpPost("FifteenPuzzle/Train")]
-        public ActionResult<List<ANodeDTO>> PostFPTrainVerify(List<ANode> list, [System.Web.Http.FromUri] int heuristic = 1)
+        public ActionResult<List<ANodeDTO>> PostFPTrainVerify(List<ANode> list, [FromQuery] int heuristic = 1)
         {
             if (heuristic != 1 && heuristic != 2)
             {
@@ -126,9 +126,12 @@ namespace AICourseTester.Controllers
 
 			if (fp.Problem == null)
 			{
+				if (fp.Heuristic == null)
+					return BadRequest("Недостаточно параметров для генерации задания FifteenPuzzle.");
+
 				var aNode = FifteenPuzzleService.GenerateState(
 					_random.Next(1, 5),
-					(int)fp.Heuristic,
+					fp.Heuristic.Value,
 					fp.Dimensions);
 
 				fp.Problem = aNode.State.ToJson();
@@ -167,6 +170,9 @@ namespace AICourseTester.Controllers
 			if (fp.IsSolved)
 				return fp.Solution.FromJson<List<ANodeDTO>>();
 
+			if (fp.Problem == null || fp.Heuristic == null)
+				return BadRequest("Недостаточно данных для проверки задания FifteenPuzzle.");
+
 			var (problemTree, problem) = FifteenPuzzleService.GenerateTree(
 				new ANode() { State = fp.Problem.FromJson<int[][]>() },
 				fp.TreeHeight);
@@ -175,7 +181,7 @@ namespace AICourseTester.Controllers
 
 			var solution = FifteenPuzzleService.Search(
 				problemTree,
-				FifteenPuzzleService.Heuristics[(int)fp.Heuristic - 1]);
+				FifteenPuzzleService.Heuristics[fp.Heuristic.Value - 1]);
 
 			fp.Solution = solution.ToJson();
 			fp.IsSolved = true;
@@ -203,7 +209,7 @@ namespace AICourseTester.Controllers
 				return NotFound();
 
 			var errors = await _context.ErrorRecords
-				.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fp.Id)
+				.Where(e => e.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") && e.FifteenPuzzleId == fp.Id)
 				.OrderBy(e => e.Id)
 				.ToListAsync();
 
@@ -222,7 +228,7 @@ namespace AICourseTester.Controllers
 				return NotFound();
 
 			var gaps = await _context.KnowledgeGaps
-				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fp.Id)
+				.Where(g => g.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") && g.FifteenPuzzleId == fp.Id)
 				.Include(g => g.KnowledgeAspect)
 				.OrderByDescending(g => g.GapScore)
 				.Select(g => new
@@ -271,7 +277,7 @@ namespace AICourseTester.Controllers
 		private async Task RemoveFifteenPuzzleAnalysisDataAsync(int fifteenPuzzleId)
 		{
 			var oldErrors = await _context.ErrorRecords
-				.Where(e => e.TaskType == "FifteenPuzzle" && e.FifteenPuzzleId == fifteenPuzzleId)
+				.Where(e => e.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") && e.FifteenPuzzleId == fifteenPuzzleId)
 				.ToListAsync();
 
 			var oldErrorIds = oldErrors.Select(e => e.Id).ToList();
@@ -463,7 +469,7 @@ namespace AICourseTester.Controllers
                         User = u
                 });
             return await fp
-			.OrderByDescending(x => x.Task.Date)
+			.OrderByDescending(x => x.Task!.Date)
 			.ToArrayAsync();
 		}
 
@@ -494,7 +500,7 @@ namespace AICourseTester.Controllers
 				});
 
 			var result = await tasks
-				.OrderByDescending(x => x.Task.Date)
+				.OrderByDescending(x => x.Task!.Date)
 				.ToArrayAsync();
 
 			return result.Length == 0 ? NotFound() : result;
@@ -525,7 +531,7 @@ namespace AICourseTester.Controllers
 					},
 					User = u
 				})
-				.FirstOrDefaultAsync(x => x.Task.Id == id);
+				.FirstOrDefaultAsync(x => x.Task!.Id == id);
 
 			return task == null ? NotFound() : task;
 		}
@@ -536,9 +542,9 @@ namespace AICourseTester.Controllers
 	int[][]? State,
 	string userId,
 	int id,
-	[System.Web.Http.FromUri] int? iters = null,
-	[System.Web.Http.FromUri] int? dimensions = null,
-	[System.Web.Http.FromUri] bool generate = false)
+	[FromQuery] int? iters = null,
+	[FromQuery] int? dimensions = null,
+	[FromQuery] bool generate = false)
 		{
 			var fp = await _context.Fifteens
 				.FirstOrDefaultAsync(f => f.Id == id && f.UserId == userId);

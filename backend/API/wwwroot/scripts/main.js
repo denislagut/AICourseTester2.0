@@ -1,1 +1,1 @@
-const apiHost = 'https://localhost:7169/api'
+const apiHost = '/api'

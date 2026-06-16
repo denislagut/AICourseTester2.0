@@ -12,7 +12,7 @@ namespace AICourseTester.Models
         public ANode? prv { get; set; } = null;
         public List<int> Parents { get; set; } = new();
         public int Id { get; set; }
-        public int[][]? State { get; set; }
+        public int[][] State { get; set; } = null!;
         public int G { get; set; } = -1;
         public int H { get; set; } = -1;
         public int F { get; set; } = -1;

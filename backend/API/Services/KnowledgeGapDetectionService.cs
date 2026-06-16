@@ -66,6 +66,14 @@ namespace AICourseTester.Services
 				taskType: "AlphaBeta",
 				currentAnalysisRunId: latestRunId);
 
+			gaps.AddRange(await BuildResolvedGapsAsync(
+				userId,
+				taskType: "AlphaBeta",
+				alphaBetaId: alphaBetaId,
+				fifteenPuzzleId: null,
+				analysisRunId: latestRunId,
+				excludedKnowledgeAspectIds: gaps.Select(gap => gap.KnowledgeAspectId)));
+
 			await _context.KnowledgeGaps.AddRangeAsync(gaps);
 			await _context.SaveChangesAsync();
 
@@ -83,7 +91,7 @@ namespace AICourseTester.Services
 				analysisRunId: latestRunId);
 
 			var oldGapsQuery = _context.KnowledgeGaps
-				.Where(g => g.TaskType == "FifteenPuzzle" && g.FifteenPuzzleId == fifteenPuzzleId);
+				.Where(g => g.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") && g.FifteenPuzzleId == fifteenPuzzleId);
 
 			if (latestRunId.HasValue)
 			{
@@ -123,6 +131,14 @@ namespace AICourseTester.Services
 				taskType: "FifteenPuzzle",
 				currentAnalysisRunId: latestRunId);
 
+			gaps.AddRange(await BuildResolvedGapsAsync(
+				userId,
+				taskType: "FifteenPuzzle",
+				alphaBetaId: null,
+				fifteenPuzzleId: fifteenPuzzleId,
+				analysisRunId: latestRunId,
+				excludedKnowledgeAspectIds: gaps.Select(gap => gap.KnowledgeAspectId)));
+
 			await _context.KnowledgeGaps.AddRangeAsync(gaps);
 			await _context.SaveChangesAsync();
 
@@ -134,12 +150,14 @@ namespace AICourseTester.Services
 			string taskType,
 			int? alphaBetaId,
 			int? fifteenPuzzleId,
-			int? analysisRunId)
+			int? analysisRunId,
+			IEnumerable<int>? excludedKnowledgeAspectIds = null)
 		{
+			var excludedAspectIds = excludedKnowledgeAspectIds?.ToHashSet() ?? new HashSet<int>();
 			var previousGaps = await _context.KnowledgeGaps
 				.Where(g =>
 					g.UserId == userId &&
-					g.TaskType == taskType &&
+					g.TaskTypeId == LookupIds.TaskTypeId(taskType) &&
 					g.AnalysisRunId != analysisRunId)
 				.GroupBy(g => g.KnowledgeAspectId)
 				.Select(g => g
@@ -148,7 +166,7 @@ namespace AICourseTester.Services
 				.ToListAsync();
 
 			return previousGaps
-				.Where(g => g.GapScore > 0)
+				.Where(g => g.GapScore > 0 && !excludedAspectIds.Contains(g.KnowledgeAspectId))
 				.Select(previous => new KnowledgeGap
 				{
 					UserId = userId,
@@ -179,7 +197,7 @@ namespace AICourseTester.Services
 			int? fifteenPuzzleId)
 		{
 			var query = _context.AnalysisRuns
-				.Where(r => r.TaskType == taskType && r.Status == "Started");
+				.Where(r => r.TaskTypeId == LookupIds.TaskTypeId(taskType) && r.StatusId == LookupIds.AnalysisStatusId("Started"));
 
 			if (alphaBetaId.HasValue)
 			{
@@ -204,7 +222,7 @@ namespace AICourseTester.Services
 			int? analysisRunId)
 		{
 			var query = _context.ErrorRecords
-				.Where(e => e.TaskType == taskType && e.ErrorTypeId != null);
+				.Where(e => e.TaskTypeId == LookupIds.TaskTypeId(taskType) && e.ErrorTypeId != null);
 
 			if (analysisRunId.HasValue)
 			{
@@ -228,7 +246,9 @@ namespace AICourseTester.Services
 					.ThenInclude(t => t!.ErrorTypeAspects)
 						.ThenInclude(eta => eta.KnowledgeAspect)
 				.Include(e => e.IncomingLinks)
+					.ThenInclude(l => l.RelationTypeRef)
 				.Include(e => e.OutgoingLinks)
+					.ThenInclude(l => l.RelationTypeRef)
 				.ToListAsync();
 		}
 
@@ -345,7 +365,7 @@ namespace AICourseTester.Services
 				var previousGap = await _context.KnowledgeGaps
 					.Where(g =>
 						g.UserId == userId &&
-						g.TaskType == taskType &&
+						g.TaskTypeId == LookupIds.TaskTypeId(taskType) &&
 						g.KnowledgeAspectId == gap.KnowledgeAspectId &&
 						g.AnalysisRunId != currentAnalysisRunId)
 					.OrderByDescending(g => g.CreatedAt)
@@ -427,13 +447,13 @@ namespace AICourseTester.Services
 		private static double GetCausalityMultiplier(ErrorRecord error)
 		{
 			var hasStrongIncomingCause = error.IncomingLinks.Any(l =>
-				l.RelationType == "CAUSES" ||
-				l.RelationType == "EXPLAINS");
+				l.RelationTypeRef?.Code == "CAUSES" ||
+				l.RelationTypeRef?.Code == "EXPLAINS");
 
 			var hasOutgoingCause = error.OutgoingLinks.Any(l =>
-				l.RelationType == "CAUSES" ||
-				l.RelationType == "EXPLAINS" ||
-				l.RelationType == "MAY_CAUSE");
+				l.RelationTypeRef?.Code == "CAUSES" ||
+				l.RelationTypeRef?.Code == "EXPLAINS" ||
+				l.RelationTypeRef?.Code == "MAY_CAUSE");
 
 			if (hasStrongIncomingCause && !hasOutgoingCause)
 			{
@@ -456,13 +476,13 @@ namespace AICourseTester.Services
 		private static bool IsRootCause(ErrorRecord error)
 		{
 			var hasStrongIncomingCause = error.IncomingLinks.Any(l =>
-				l.RelationType == "CAUSES" ||
-				l.RelationType == "EXPLAINS");
+				l.RelationTypeRef?.Code == "CAUSES" ||
+				l.RelationTypeRef?.Code == "EXPLAINS");
 
 			var hasOutgoingCause = error.OutgoingLinks.Any(l =>
-				l.RelationType == "CAUSES" ||
-				l.RelationType == "EXPLAINS" ||
-				l.RelationType == "MAY_CAUSE");
+				l.RelationTypeRef?.Code == "CAUSES" ||
+				l.RelationTypeRef?.Code == "EXPLAINS" ||
+				l.RelationTypeRef?.Code == "MAY_CAUSE");
 
 			return !hasStrongIncomingCause && hasOutgoingCause;
 		}

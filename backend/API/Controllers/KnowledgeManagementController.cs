@@ -43,14 +43,15 @@ namespace AICourseTester.Controllers
 		{
 			return await _context.KnowledgeAspects
 				.AsNoTracking()
-				.OrderBy(aspect => aspect.TopicName)
+				.Include(aspect => aspect.Topic)
+				.OrderBy(aspect => aspect.Topic == null ? null : aspect.Topic.Name)
 				.ThenBy(aspect => aspect.Name)
 				.Select(aspect => new KnowledgeAspectViewDTO
 				{
 					Id = aspect.Id,
 					Name = aspect.Name,
 					Description = aspect.Description,
-					TopicName = aspect.TopicName,
+					TopicName = aspect.Topic == null ? null : aspect.Topic.Name,
 					IsActive = aspect.IsActive
 				})
 				.ToListAsync();
@@ -78,7 +79,7 @@ namespace AICourseTester.Controllers
 			{
 				Name = dto.Name.Trim(),
 				Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim(),
-				TopicName = string.IsNullOrWhiteSpace(dto.TopicName) ? null : dto.TopicName.Trim(),
+				Topic = await GetOrCreateTopicAsync(dto.TopicName),
 				IsActive = dto.IsActive
 			};
 
@@ -98,6 +99,7 @@ namespace AICourseTester.Controllers
 			}
 
 			var aspect = await _context.KnowledgeAspects
+				.Include(item => item.Topic)
 				.FirstOrDefaultAsync(item => item.Id == aspectId);
 
 			if (aspect == null)
@@ -107,7 +109,7 @@ namespace AICourseTester.Controllers
 
 			aspect.Name = dto.Name.Trim();
 			aspect.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
-			aspect.TopicName = string.IsNullOrWhiteSpace(dto.TopicName) ? null : dto.TopicName.Trim();
+			aspect.Topic = await GetOrCreateTopicAsync(dto.TopicName);
 			aspect.IsActive = dto.IsActive;
 
 			await _context.SaveChangesAsync();
@@ -194,8 +196,12 @@ namespace AICourseTester.Controllers
 		public async Task<ActionResult<List<CausalErrorRule>>> GetRules()
 		{
 			return await _context.CausalErrorRules
-				.OrderBy(r => r.TaskType)
-				.ThenBy(r => r.SourceErrorCode)
+				.Include(r => r.TaskTypeRef)
+				.Include(r => r.SourceErrorType)
+				.Include(r => r.TargetErrorType)
+				.Include(r => r.RelationTypeRef)
+				.OrderBy(r => r.TaskTypeRef.Code)
+				.ThenBy(r => r.SourceErrorType.Code)
 				.ToListAsync();
 		}
 
@@ -203,6 +209,8 @@ namespace AICourseTester.Controllers
 		[HttpPost("CausalRules")]
 		public async Task<ActionResult> CreateRule(CausalErrorRule rule)
 		{
+			await ResolveRuleReferencesAsync(rule);
+
 			_context.CausalErrorRules.Add(rule);
 			await _context.SaveChangesAsync();
 
@@ -218,10 +226,13 @@ namespace AICourseTester.Controllers
 			if (rule == null)
 				return NotFound();
 
-			rule.TaskType = updatedRule.TaskType;
-			rule.SourceErrorCode = updatedRule.SourceErrorCode;
-			rule.TargetErrorCode = updatedRule.TargetErrorCode;
-			rule.RelationType = updatedRule.RelationType;
+			updatedRule.Id = id;
+			await ResolveRuleReferencesAsync(updatedRule);
+
+			rule.TaskTypeId = updatedRule.TaskTypeId;
+			rule.SourceErrorTypeId = updatedRule.SourceErrorTypeId;
+			rule.TargetErrorTypeId = updatedRule.TargetErrorTypeId;
+			rule.RelationTypeId = updatedRule.RelationTypeId;
 			rule.Weight = updatedRule.Weight;
 			rule.SameNodeRequired = updatedRule.SameNodeRequired;
 			rule.SameRootBranchRequired = updatedRule.SameRootBranchRequired;
@@ -238,6 +249,7 @@ namespace AICourseTester.Controllers
 				.AsNoTracking()
 				.Include(link => link.ErrorType)
 				.Include(link => link.KnowledgeAspect)
+					.ThenInclude(aspect => aspect.Topic)
 				.Select(link => new ErrorTypeAspectViewDTO
 				{
 					Id = link.Id,
@@ -246,7 +258,7 @@ namespace AICourseTester.Controllers
 					ErrorTypeCode = link.ErrorType.Code,
 					KnowledgeAspectId = link.KnowledgeAspectId,
 					KnowledgeAspectName = link.KnowledgeAspect.Name,
-					TopicName = link.KnowledgeAspect.TopicName,
+					TopicName = link.KnowledgeAspect.Topic == null ? null : link.KnowledgeAspect.Topic.Name,
 					Weight = link.Weight
 				});
 		}
@@ -264,9 +276,71 @@ namespace AICourseTester.Controllers
 				Id = aspect.Id,
 				Name = aspect.Name,
 				Description = aspect.Description,
-				TopicName = aspect.TopicName,
+				TopicName = aspect.Topic == null ? null : aspect.Topic.Name,
 				IsActive = aspect.IsActive
 			};
+		}
+
+		private async Task<KnowledgeTopic?> GetOrCreateTopicAsync(string? topicName)
+		{
+			if (string.IsNullOrWhiteSpace(topicName))
+			{
+				return null;
+			}
+
+			var normalizedName = topicName.Trim();
+			var topic = await _context.KnowledgeTopics
+				.FirstOrDefaultAsync(item => item.Name == normalizedName);
+
+			if (topic != null)
+			{
+				return topic;
+			}
+
+			topic = new KnowledgeTopic { Name = normalizedName };
+			_context.KnowledgeTopics.Add(topic);
+			return topic;
+		}
+
+		private async Task ResolveRuleReferencesAsync(CausalErrorRule rule)
+		{
+			var sourceCode = rule.SourceErrorCode;
+			var targetCode = rule.TargetErrorCode;
+
+			rule.TaskTypeId = LookupIds.TaskTypeId(rule.TaskType);
+			rule.RelationTypeId = LookupIds.CausalRelationTypeId(rule.RelationType);
+			rule.SourceErrorType = await GetOrCreateErrorTypeAsync(sourceCode);
+			rule.TargetErrorType = await GetOrCreateErrorTypeAsync(targetCode);
+			rule.SourceErrorTypeId = rule.SourceErrorType.Id;
+			rule.TargetErrorTypeId = rule.TargetErrorType.Id;
+		}
+
+		private async Task<ErrorType> GetOrCreateErrorTypeAsync(string code)
+		{
+			if (string.IsNullOrWhiteSpace(code))
+			{
+				code = "UNCLASSIFIED_ERROR";
+			}
+
+			var normalizedCode = code.Trim();
+			var errorType = await _context.ErrorTypes
+				.FirstOrDefaultAsync(type => type.Code == normalizedCode);
+
+			if (errorType != null)
+			{
+				return errorType;
+			}
+
+			errorType = new ErrorType
+			{
+				Code = normalizedCode,
+				Name = normalizedCode,
+				DefaultSeverity = 1.0
+			};
+			_context.ErrorTypes.Add(errorType);
+			await _context.SaveChangesAsync();
+
+			return errorType;
 		}
 
 		private static string? ValidateAspect(KnowledgeAspectEditDTO dto)

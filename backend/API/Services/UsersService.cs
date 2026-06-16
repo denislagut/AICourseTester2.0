@@ -24,10 +24,10 @@ namespace AICourseTester.Services
             var result = start
                 .GroupJoin(_context.UserRoles, u => u.Id, ur => ur.UserId, (u, ur) => new { u, ur })
                 .SelectMany(uur => uur.ur.DefaultIfEmpty(), (u, r) => new { u.u, r })
-                .GroupJoin(_context.Roles, ur => ur.r.RoleId, r => r.Id, (ur, r) => new { ur.u, r })
+                .GroupJoin(_context.Roles, ur => ur.r == null ? null : ur.r.RoleId, r => r.Id, (ur, r) => new { ur.u, r })
                 .SelectMany(uur => uur.r.DefaultIfEmpty(), (u, r) => new { u.u, r })
                 .GroupJoin(_context.UserGroups, ur => ur.u.Id, g => g.UserId, (ur, g) => new { ur, g })
-                .SelectMany(urg => urg.g.DefaultIfEmpty(), (urg, g) => new { urg.ur.u.Id, urg.ur.u.UserName, urg.ur.u.Name, urg.ur.u.SecondName, urg.ur.u.Patronymic, g.GroupId, urg.ur.u.PfpPath, RoleName = urg.ur.r.Name })
+                .SelectMany(urg => urg.g.DefaultIfEmpty(), (urg, g) => new { urg.ur.u.Id, urg.ur.u.UserName, urg.ur.u.Name, urg.ur.u.SecondName, urg.ur.u.Patronymic, GroupId = g == null ? null : (int?)g.GroupId, urg.ur.u.PfpPath, RoleName = urg.ur.r == null ? null : urg.ur.r.Name })
                 .GroupJoin(_context.Groups, u => u.GroupId, g => g.Id, (u, g) => new { u, g })
                 .SelectMany(urg => urg.g.DefaultIfEmpty(), (ur, g) => new UserDTO
                 {
@@ -37,7 +37,7 @@ namespace AICourseTester.Services
                     SecondName = ur.u.SecondName,
                     Patronymic = ur.u.Patronymic,
                     GroupId = ur.u.GroupId,
-                    Group = g.Name,
+                    Group = g == null ? null : g.Name,
                     Pfp = getPfp ? FullPfpPath(url, ur.u.PfpPath) : null,
                     IsAdmin = ur.u.RoleName == "Administrator" ? true : null
                 }).OrderBy(u => u.Group);

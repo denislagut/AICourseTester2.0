@@ -1,7 +1,7 @@
 ﻿using System.Collections;
 
 // https://stackoverflow.com/questions/1552225/hashset-that-preserves-ordering
-public class OrderedSet<T> : ICollection<T>
+public class OrderedSet<T> : ICollection<T> where T : notnull
 {
     private readonly IDictionary<T, LinkedListNode<T>> m_Dictionary;
     private readonly LinkedList<T> m_LinkedList;
@@ -60,9 +60,7 @@ public class OrderedSet<T> : ICollection<T>
 
     public bool Remove(T item)
     {
-        if (item == null) return false;
-        var found = m_Dictionary.TryGetValue(item, out var node);
-        if (!found) return false;
+        if (!m_Dictionary.TryGetValue(item, out var node)) return false;
         m_Dictionary.Remove(item);
         m_LinkedList.Remove(node);
         return true;
@@ -80,7 +78,8 @@ public class OrderedSet<T> : ICollection<T>
 
     public T Pop()
     {
-        var item = m_LinkedList.First.Value;
+        var first = m_LinkedList.First ?? throw new InvalidOperationException("The set is empty.");
+        var item = first.Value;
         m_LinkedList.RemoveFirst();
         m_Dictionary.Remove(item);
         return item;
@@ -98,7 +97,7 @@ public class OrderedSet<T> : ICollection<T>
 
     public bool Contains(T item)
     {
-        return item != null && m_Dictionary.ContainsKey(item);
+        return m_Dictionary.ContainsKey(item);
     }
 
     public void CopyTo(T[] array, int arrayIndex)

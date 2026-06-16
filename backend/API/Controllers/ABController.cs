@@ -189,7 +189,10 @@ namespace AICourseTester.Controllers
 
 			if (ab.Problem == null)
 			{
-				var problemInner = AlphaBetaService.GenerateTree3((int)ab.MaxValue, (int)ab.Template);
+				if (ab.MaxValue == null || ab.Template == null)
+					return BadRequest("Недостаточно параметров для генерации задания AlphaBeta.");
+
+				var problemInner = AlphaBetaService.GenerateTree3(ab.MaxValue.Value, ab.Template.Value);
 				ab.Problem = problemInner.ToJson();
 				_context.Update(ab);
 				await _context.SaveChangesAsync();
@@ -379,6 +382,7 @@ namespace AICourseTester.Controllers
 				.Include(e => e.ErrorType)
 					.ThenInclude(et => et!.ErrorTypeAspects)
 						.ThenInclude(eta => eta.KnowledgeAspect)
+						.ThenInclude(ka => ka.Topic)
 				.Select(e => new
 				{
 					e.Id,
@@ -397,7 +401,7 @@ namespace AICourseTester.Controllers
 							eta.KnowledgeAspectId,
 							eta.KnowledgeAspect.Name,
 							eta.KnowledgeAspect.Description,
-							eta.KnowledgeAspect.TopicName,
+							TopicName = eta.KnowledgeAspect.Topic == null ? null : eta.KnowledgeAspect.Topic.Name,
 							eta.Weight
 						}).Cast<object>().ToList()
 				})
@@ -420,6 +424,8 @@ namespace AICourseTester.Controllers
 			var gaps = await _context.KnowledgeGaps
 				.Where(g => g.AlphaBetaId == ab.Id)
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
+				.Include(g => g.LevelRef)
 				.OrderByDescending(g => g.GapScore)
 				.Select(g => new
 				{
@@ -431,7 +437,7 @@ namespace AICourseTester.Controllers
 					g.TotalWeight,
 					g.AverageSeverity,
 					g.GapScore,
-					g.Level,
+					Level = g.LevelRef.Code,
 					g.CreatedAt
 				})
 				.ToListAsync<object>();
@@ -452,6 +458,8 @@ namespace AICourseTester.Controllers
 			var gaps = await _context.KnowledgeGaps
 				.Where(g => g.AlphaBetaId == ab.Id)
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
+				.Include(g => g.LevelRef)
 				.OrderByDescending(g => g.GapScore)
 				.Select(g => new
 				{
@@ -463,7 +471,7 @@ namespace AICourseTester.Controllers
 					g.TotalWeight,
 					g.AverageSeverity,
 					g.GapScore,
-					g.Level,
+					Level = g.LevelRef.Code,
 					g.CreatedAt
 				})
 				.ToListAsync<object>();
@@ -665,7 +673,7 @@ namespace AICourseTester.Controllers
 				});
 
 			return await ab
-				.OrderByDescending(x => x.Task.Date)
+				.OrderByDescending(x => x.Task!.Date)
 				.ToArrayAsync();
 		}
 
@@ -694,7 +702,7 @@ namespace AICourseTester.Controllers
 				});
 
 			var result = await tasks
-				.OrderByDescending(x => x.Task.Date)
+				.OrderByDescending(x => x.Task!.Date)
 				.ToArrayAsync();
 
 			return result.Length == 0 ? NotFound() : result;
@@ -723,7 +731,7 @@ namespace AICourseTester.Controllers
 					},
 					User = u
 				})
-				.FirstOrDefaultAsync(x => x.Task.Id == id);
+				.FirstOrDefaultAsync(x => x.Task!.Id == id);
 
 			return task == null ? NotFound() : task;
 		}
@@ -766,7 +774,10 @@ namespace AICourseTester.Controllers
 
 			if (generate)
 			{
-				var tree = AlphaBetaService.GenerateTree3((int)ab.MaxValue, (int)ab.Template);
+				if (ab.MaxValue == null || ab.Template == null)
+					return BadRequest("Недостаточно параметров для генерации задания AlphaBeta.");
+
+				var tree = AlphaBetaService.GenerateTree3(ab.MaxValue.Value, ab.Template.Value);
 				ab.Problem = tree.ToJson();
 			}
 

@@ -303,6 +303,7 @@ namespace AICourseTester.Services
 			var gaps = await _context.KnowledgeGaps
 				.AsNoTracking()
 				.Include(g => g.KnowledgeAspect)
+					.ThenInclude(ka => ka.Topic)
 				.Include(g => g.AlphaBeta)
 				.Include(g => g.FifteenPuzzle)
 				.Where(g => userIds.Contains(g.UserId))
@@ -386,7 +387,7 @@ namespace AICourseTester.Services
 				{
 					g.KnowledgeAspectId,
 					AspectName = g.KnowledgeAspect.Name,
-					g.KnowledgeAspect.TopicName
+					TopicName = g.KnowledgeAspect.Topic == null ? null : g.KnowledgeAspect.Topic.Name
 				})
 				.Select(g => new TopKnowledgeGapDTO
 				{

@@ -35,7 +35,8 @@ namespace AICourseTester.Services.Analysis
 						{
 							SourceErrorId = source.Id,
 							TargetErrorId = target.Id,
-							RelationType = rule.RelationType,
+							RelationTypeId = rule.RelationTypeId,
+							RelationTypeRef = rule.RelationTypeRef,
 							Weight = rule.Weight
 						});
 					}
@@ -312,7 +313,7 @@ namespace AICourseTester.Services.Analysis
 			{
 				SourceErrorId = source.Id,
 				TargetErrorId = target.Id,
-				RelationType = relationType,
+				RelationTypeId = LookupIds.CausalRelationTypeId(relationType),
 				Weight = weight
 			});
 		}
@@ -324,7 +325,7 @@ namespace AICourseTester.Services.Analysis
 				{
 					l.SourceErrorId,
 					l.TargetErrorId,
-					l.RelationType
+					l.RelationTypeId
 				})
 				.Select(g => g.First())
 				.ToList();

@@ -83,7 +83,7 @@ namespace AICourseTester.Services
 						analysisRun.Id);
 				}
 
-				analysisRun.Status = "Completed";
+				analysisRun.StatusId = LookupIds.AnalysisStatusId("Completed");
 				analysisRun.CompletedAt = DateTime.UtcNow;
 
 				await _context.SaveChangesAsync();
@@ -137,7 +137,7 @@ namespace AICourseTester.Services
 					userId,
 					analysisRun.Id);
 
-				analysisRun.Status = "Completed";
+				analysisRun.StatusId = LookupIds.AnalysisStatusId("Completed");
 				analysisRun.CompletedAt = DateTime.UtcNow;
 
 				await _context.SaveChangesAsync();
@@ -191,7 +191,7 @@ namespace AICourseTester.Services
 					userId,
 					analysisRun.Id);
 
-				analysisRun.Status = "Completed";
+				analysisRun.StatusId = LookupIds.AnalysisStatusId("Completed");
 				analysisRun.CompletedAt = DateTime.UtcNow;
 
 				await _context.SaveChangesAsync();
@@ -217,12 +217,12 @@ namespace AICourseTester.Services
 		{
 			var analysisRun = new AnalysisRun
 			{
-				TaskType = taskType,
+				TaskTypeId = LookupIds.TaskTypeId(taskType),
 				AlphaBetaId = alphaBetaId,
 				FifteenPuzzleId = fifteenPuzzleId,
 				UserId = userId,
 				StartedAt = DateTime.UtcNow,
-				Status = "Started",
+				StatusId = LookupIds.AnalysisStatusId("Started"),
 				AnalyzerVersion = AnalyzerVersion
 			};
 
@@ -242,7 +242,7 @@ namespace AICourseTester.Services
 				return;
 			}
 
-			analysisRun.Status = "Failed";
+			analysisRun.StatusId = LookupIds.AnalysisStatusId("Failed");
 			analysisRun.CompletedAt = DateTime.UtcNow;
 			analysisRun.ErrorMessage = exception.Message;
 
@@ -256,8 +256,9 @@ namespace AICourseTester.Services
 			int? fifteenPuzzleId,
 			ITaskAnalysisResult analysisResult)
 		{
+			var taskTypeId = LookupIds.TaskTypeId(taskType);
 			var oldErrorsQuery = _context.ErrorRecords
-				.Where(e => e.TaskType == taskType);
+				.Where(e => e.TaskTypeId == taskTypeId);
 
 			if (alphaBetaId.HasValue)
 			{
@@ -285,14 +286,18 @@ namespace AICourseTester.Services
 
 			_context.ErrorRecords.RemoveRange(oldErrors);
 
+			var errorTypesByCode = await EnsureErrorTypesAsync(
+				analysisResult.Errors.Select(error => error.Code).Distinct());
+
 			var errorEntities = analysisResult.Errors.Select(error => new ErrorRecord
 			{
-				TaskType = taskType,
+				TaskTypeId = taskTypeId,
 				AnalysisRunId = analysisRunId,
 				AlphaBetaId = alphaBetaId,
 				FifteenPuzzleId = fifteenPuzzleId,
 
-				Code = error.Code,
+				ErrorTypeId = errorTypesByCode[error.Code].Id,
+				ErrorType = errorTypesByCode[error.Code],
 				Message = error.Message,
 				NodeId = error.NodeId,
 				TreeLevel = error.TreeLevel,
@@ -332,13 +337,52 @@ namespace AICourseTester.Services
 			await _context.SaveChangesAsync();
 
 			var rules = await _context.CausalErrorRules
-				.Where(r => r.IsActive && r.TaskType == taskType)
+				.Include(r => r.SourceErrorType)
+				.Include(r => r.TargetErrorType)
+				.Include(r => r.RelationTypeRef)
+				.Where(r => r.IsActive && r.TaskTypeId == taskTypeId)
 				.ToListAsync();
 
 			var links = _errorCausalityBuilder.Build(errorEntities, rules);
 
 			await _context.CausalErrorLinks.AddRangeAsync(links);
 			await _context.SaveChangesAsync();
+		}
+
+		private async Task<Dictionary<string, ErrorType>> EnsureErrorTypesAsync(IEnumerable<string> codes)
+		{
+			var normalizedCodes = codes
+				.Where(code => !string.IsNullOrWhiteSpace(code))
+				.Distinct()
+				.ToList();
+
+			var existing = await _context.ErrorTypes
+				.Where(type => normalizedCodes.Contains(type.Code))
+				.ToDictionaryAsync(type => type.Code);
+
+			var missing = normalizedCodes
+				.Where(code => !existing.ContainsKey(code))
+				.Select(code => new ErrorType
+				{
+					Code = code,
+					Name = code,
+					Description = null,
+					DefaultSeverity = 1.0
+				})
+				.ToList();
+
+			if (missing.Count > 0)
+			{
+				await _context.ErrorTypes.AddRangeAsync(missing);
+				await _context.SaveChangesAsync();
+
+				foreach (var type in missing)
+				{
+					existing[type.Code] = type;
+				}
+			}
+
+			return existing;
 		}
 	}
 }
