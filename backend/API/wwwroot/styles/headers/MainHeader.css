@@ -102,6 +102,14 @@ img{
     background-image: url(/img/button_logout.svg);
     background-size:contain ;
 }
+.button_analytics,
+.profile-tooltip__dropdown-button.button_analytics,
+.profile-tooltip__dropdown-button.button_analytics:hover{
+    background-image: url("/img/report-business-document.svg");
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
 .profile-tooltip__dropdown-content a:hover {
     background-color: #f1f1f1;
 }

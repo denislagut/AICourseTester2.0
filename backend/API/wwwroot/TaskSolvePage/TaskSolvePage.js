@@ -28,6 +28,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 
+    document.querySelectorAll('.student-only-menu-item').forEach(item => {
+        if (isTeacher) {
+            item.remove();
+        } else {
+            item.style.display = 'block';
+        }
+    });
+
     let userId = null;
 
     try {

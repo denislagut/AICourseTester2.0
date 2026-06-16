@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/styles/main.css">
+    <link rel="stylesheet" href="/styles/headers/MainHeader.css?v=20260616-student-analytics-icon">
+    <link rel="stylesheet" href="/StudentDashboard/StudentAnalytics.css?v=20260616-student-analytics">
+    <title>Моя аналитика обучения</title>
+</head>
+<body>
+    <header class="header-wrapper">
+        <div class="profile-logo">
+            <img class="profile-logo__sys-img" src="/img/University_logo.webp" alt="">
+            <span class="profile-logo__sys-name">Система проверки заданий по СИИ</span>
+        </div>
+        <div class="profile-tooltip">
+            <img class="profile-tooltip__img-bell" src="/img/bell.svg" alt="">
+            <img class="profile-tooltip__img-user" src="/img/default-profile.webp" alt="">
+            <div class="profile-tooltip__menu">
+                <div>
+                    <a class="profile-tooltip_to-profile-href" href="/ProfileStudentPage/ProfileStudentPage.html"> </a>
+                    <span class="profile-tooltip_username">Студент</span><br>
+                    <span class="profile-tooltip_role">Студент</span>
+                </div>
+                <div class="profile-tooltip__dropdown">
+                    <button class="profile-tooltip__button-chevron"></button>
+                    <div class="profile-tooltip__dropdown-content">
+                        <a class="profile-tooltip__dropdown-button button_analytics" href="/StudentDashboard/StudentAnalytics.html" title="Моя аналитика" aria-label="Моя аналитика"></a>
+                        <button id="profile-tooltip__button-logout" class="profile-tooltip__dropdown-button button_logout" title="Выйти" aria-label="Выйти"></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-wrapper">
+        <section class="student-analytics-section">
+            <div class="section-heading">
+                <div>
+                    <h1>Моя аналитика обучения</h1>
+                    <p>Статистика построена только по вашим выполненным заданиям.</p>
+                </div>
+                <span id="student-analytics-status" class="status-text"></span>
+            </div>
+
+            <div id="student-summary-grid" class="summary-grid"></div>
+        </section>
+
+        <section class="student-analytics-section">
+            <div class="section-heading">
+                <h2>Пробелы в знаниях</h2>
+            </div>
+            <div id="student-gaps-content"></div>
+        </section>
+
+        <section class="student-analytics-section">
+            <div class="section-heading">
+                <h2>Динамика обучения</h2>
+            </div>
+            <div id="student-progress-content"></div>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.1/dist/js.cookie.min.js"></script>
+    <script src="/scripts/main.js"></script>
+    <script src="/scripts/auth.js"></script>
+    <script src="/StudentDashboard/StudentAnalytics.js?v=20260616-student-analytics"></script>
+</body>
+</html>
