@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/styles/main.css">
     <link rel="stylesheet" href="/styles/headers/AdminHeader.css">
-    <link rel="stylesheet" href="/TeacherDashboard/TeacherDashboard.css?v=20260615-knowledge-management-ui">
+    <link rel="stylesheet" href="/TeacherDashboard/TeacherDashboard.css?v=20260617-causal-rules-select-wrap">
     <title>Рекомендации и аналитика</title>
 </head>
 <body>
@@ -293,11 +293,96 @@
                 </div>
             </div>
         </section>
+
+        <section class="dashboard-section knowledge-management-section causal-rules-section">
+            <div class="section-heading">
+                <h2>Управление причинно-следственными связями между типами ошибок</h2>
+                <span id="causal-rules-status" class="status-text"></span>
+            </div>
+
+            <div class="causal-rules-grid">
+                <div class="knowledge-panel">
+                    <h3>Правило связи</h3>
+                    <form id="causal-rule-form" class="knowledge-form">
+                        <input type="hidden" id="causal-rule-id">
+                        <label class="causal-field-task">
+                            <span>Тип задания</span>
+                            <select id="causal-rule-task-type" required>
+                                <option value="">Выберите тип задания</option>
+                            </select>
+                        </label>
+                        <label class="causal-field-error">
+                            <span>Исходный тип ошибки</span>
+                            <select id="causal-rule-source-error" required>
+                                <option value="">Выберите ошибку-причину</option>
+                            </select>
+                        </label>
+                        <label class="causal-field-error">
+                            <span>Целевой тип ошибки</span>
+                            <select id="causal-rule-target-error" required>
+                                <option value="">Выберите ошибку-следствие</option>
+                            </select>
+                        </label>
+                        <label class="causal-field-relation">
+                            <span>Тип причинной связи</span>
+                            <select id="causal-rule-relation-type" required>
+                                <option value="">Выберите тип связи</option>
+                            </select>
+                        </label>
+                        <label class="causal-field-weight">
+                            <span>Вес правила</span>
+                            <input type="number" id="causal-rule-weight" min="0.01" max="1" step="0.01" value="1" required>
+                        </label>
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="causal-rule-same-node">
+                            <span>Тот же узел</span>
+                        </label>
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="causal-rule-same-root-branch">
+                            <span>Та же ветка</span>
+                        </label>
+                        <label class="checkbox-row">
+                            <input type="checkbox" id="causal-rule-active" checked>
+                            <span>Активно</span>
+                        </label>
+                        <div class="button-row">
+                            <button type="submit">Сохранить</button>
+                            <button type="button" id="clear-causal-rule-form" class="button-secondary">Очистить</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="knowledge-panel knowledge-links-panel causal-rules-panel">
+                <h3>Существующие причинно-следственные правила</h3>
+                <div class="causal-rules-table-wrapper">
+                    <table class="causal-rules-table">
+                        <thead>
+                            <tr>
+                                <th>Задание</th>
+                                <th>Причина</th>
+                                <th>Следствие</th>
+                                <th>Тип связи</th>
+                                <th>Вес</th>
+                                <th>Условия</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="causal-rules-table-body">
+                            <tr>
+                                <td colspan="8">Загрузка правил...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/js-cookie@3.0.1/dist/js.cookie.min.js"></script>
     <script src="/scripts/main.js"></script>
     <script src="/scripts/auth.js"></script>
-    <script src="/TeacherDashboard/TeacherDashboard.js?v=20260615-knowledge-management"></script>
+    <script src="/TeacherDashboard/TeacherDashboard.js?v=20260617-causal-rules-select-wrap"></script>
 </body>
 </html>

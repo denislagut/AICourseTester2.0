@@ -191,56 +191,119 @@ namespace AICourseTester.Controllers
 			return Ok();
 		}
 
-		[Authorize(Roles = "Administrator")]
 		[HttpGet("CausalRules")]
-		public async Task<ActionResult<List<CausalErrorRule>>> GetRules()
+		public async Task<ActionResult<List<CausalErrorRuleViewDTO>>> GetRules()
 		{
-			return await _context.CausalErrorRules
-				.Include(r => r.TaskTypeRef)
-				.Include(r => r.SourceErrorType)
-				.Include(r => r.TargetErrorType)
-				.Include(r => r.RelationTypeRef)
-				.OrderBy(r => r.TaskTypeRef.Code)
-				.ThenBy(r => r.SourceErrorType.Code)
+			return await BuildCausalRuleQuery()
 				.ToListAsync();
 		}
 
-		[Authorize(Roles = "Administrator")]
 		[HttpPost("CausalRules")]
-		public async Task<ActionResult> CreateRule(CausalErrorRule rule)
+		public async Task<ActionResult<CausalErrorRuleViewDTO>> CreateOrUpdateRule(CausalErrorRuleEditDTO dto)
 		{
-			await ResolveRuleReferencesAsync(rule);
+			var validationError = await ValidateCausalRuleAsync(dto);
+			if (validationError != null)
+			{
+				return BadRequest(validationError);
+			}
+
+			var existingRule = await _context.CausalErrorRules
+				.FirstOrDefaultAsync(rule =>
+					rule.TaskTypeId == dto.TaskTypeId &&
+					rule.SourceErrorTypeId == dto.SourceErrorTypeId &&
+					rule.TargetErrorTypeId == dto.TargetErrorTypeId &&
+					rule.RelationTypeId == dto.RelationTypeId &&
+					rule.SameNodeRequired == dto.SameNodeRequired &&
+					rule.SameRootBranchRequired == dto.SameRootBranchRequired);
+
+			if (existingRule != null)
+			{
+				existingRule.Weight = dto.Weight;
+				existingRule.IsActive = dto.IsActive;
+				await _context.SaveChangesAsync();
+
+				return Ok(await GetCausalRuleByIdAsync(existingRule.Id));
+			}
+
+			var rule = new CausalErrorRule
+			{
+				TaskTypeId = dto.TaskTypeId,
+				SourceErrorTypeId = dto.SourceErrorTypeId,
+				TargetErrorTypeId = dto.TargetErrorTypeId,
+				RelationTypeId = dto.RelationTypeId,
+				Weight = dto.Weight,
+				SameNodeRequired = dto.SameNodeRequired,
+				SameRootBranchRequired = dto.SameRootBranchRequired,
+				IsActive = dto.IsActive
+			};
 
 			_context.CausalErrorRules.Add(rule);
 			await _context.SaveChangesAsync();
 
-			return Ok(rule);
+			return Ok(await GetCausalRuleByIdAsync(rule.Id));
 		}
 
-		[Authorize(Roles = "Administrator")]
 		[HttpPut("CausalRules/{id}")]
-		public async Task<ActionResult> UpdateRule(int id, CausalErrorRule updatedRule)
+		public async Task<ActionResult<CausalErrorRuleViewDTO>> UpdateRule(int id, CausalErrorRuleEditDTO dto)
 		{
+			var validationError = await ValidateCausalRuleAsync(dto);
+			if (validationError != null)
+			{
+				return BadRequest(validationError);
+			}
+
 			var rule = await _context.CausalErrorRules.FindAsync(id);
 
 			if (rule == null)
-				return NotFound();
+			{
+				return NotFound("Правило причинно-следственной связи не найдено");
+			}
 
-			updatedRule.Id = id;
-			await ResolveRuleReferencesAsync(updatedRule);
+			var duplicateExists = await _context.CausalErrorRules
+				.AsNoTracking()
+				.AnyAsync(item =>
+					item.Id != id &&
+					item.TaskTypeId == dto.TaskTypeId &&
+					item.SourceErrorTypeId == dto.SourceErrorTypeId &&
+					item.TargetErrorTypeId == dto.TargetErrorTypeId &&
+					item.RelationTypeId == dto.RelationTypeId &&
+					item.SameNodeRequired == dto.SameNodeRequired &&
+					item.SameRootBranchRequired == dto.SameRootBranchRequired);
 
-			rule.TaskTypeId = updatedRule.TaskTypeId;
-			rule.SourceErrorTypeId = updatedRule.SourceErrorTypeId;
-			rule.TargetErrorTypeId = updatedRule.TargetErrorTypeId;
-			rule.RelationTypeId = updatedRule.RelationTypeId;
-			rule.Weight = updatedRule.Weight;
-			rule.SameNodeRequired = updatedRule.SameNodeRequired;
-			rule.SameRootBranchRequired = updatedRule.SameRootBranchRequired;
-			rule.IsActive = updatedRule.IsActive;
+			if (duplicateExists)
+			{
+				return BadRequest("Такое правило уже существует. Измените существующее правило или выберите другие параметры.");
+			}
+
+			rule.TaskTypeId = dto.TaskTypeId;
+			rule.SourceErrorTypeId = dto.SourceErrorTypeId;
+			rule.TargetErrorTypeId = dto.TargetErrorTypeId;
+			rule.RelationTypeId = dto.RelationTypeId;
+			rule.Weight = dto.Weight;
+			rule.SameNodeRequired = dto.SameNodeRequired;
+			rule.SameRootBranchRequired = dto.SameRootBranchRequired;
+			rule.IsActive = dto.IsActive;
 
 			await _context.SaveChangesAsync();
 
-			return Ok(rule);
+			return Ok(await GetCausalRuleByIdAsync(rule.Id));
+		}
+
+		[HttpDelete("CausalRules/{id}")]
+		public async Task<ActionResult> DeleteRule(int id)
+		{
+			var rule = await _context.CausalErrorRules
+				.FirstOrDefaultAsync(item => item.Id == id);
+
+			if (rule == null)
+			{
+				return NotFound("Правило причинно-следственной связи не найдено");
+			}
+
+			_context.CausalErrorRules.Remove(rule);
+			await _context.SaveChangesAsync();
+
+			return Ok();
 		}
 
 		private IQueryable<ErrorTypeAspectViewDTO> BuildLinkQuery()
@@ -267,6 +330,45 @@ namespace AICourseTester.Controllers
 		{
 			return await BuildLinkQuery()
 				.FirstAsync(link => link.Id == linkId);
+		}
+
+		private IQueryable<CausalErrorRuleViewDTO> BuildCausalRuleQuery()
+		{
+			return _context.CausalErrorRules
+				.AsNoTracking()
+				.Include(rule => rule.TaskTypeRef)
+				.Include(rule => rule.SourceErrorType)
+				.Include(rule => rule.TargetErrorType)
+				.Include(rule => rule.RelationTypeRef)
+				.OrderBy(rule => rule.TaskTypeRef.Code)
+				.ThenBy(rule => rule.SourceErrorType.Code)
+				.ThenBy(rule => rule.TargetErrorType.Code)
+				.Select(rule => new CausalErrorRuleViewDTO
+				{
+					Id = rule.Id,
+					TaskTypeId = rule.TaskTypeId,
+					TaskTypeCode = rule.TaskTypeRef.Code,
+					TaskTypeName = rule.TaskTypeRef.Name,
+					SourceErrorTypeId = rule.SourceErrorTypeId,
+					SourceErrorTypeCode = rule.SourceErrorType.Code,
+					SourceErrorTypeName = rule.SourceErrorType.Name,
+					TargetErrorTypeId = rule.TargetErrorTypeId,
+					TargetErrorTypeCode = rule.TargetErrorType.Code,
+					TargetErrorTypeName = rule.TargetErrorType.Name,
+					RelationTypeId = rule.RelationTypeId,
+					RelationTypeCode = rule.RelationTypeRef.Code,
+					RelationTypeName = rule.RelationTypeRef.Name,
+					Weight = rule.Weight,
+					SameNodeRequired = rule.SameNodeRequired,
+					SameRootBranchRequired = rule.SameRootBranchRequired,
+					IsActive = rule.IsActive
+				});
+		}
+
+		private async Task<CausalErrorRuleViewDTO> GetCausalRuleByIdAsync(int id)
+		{
+			return await BuildCausalRuleQuery()
+				.FirstAsync(rule => rule.Id == id);
 		}
 
 		private static KnowledgeAspectViewDTO MapAspect(KnowledgeAspect aspect)
@@ -376,6 +478,55 @@ namespace AICourseTester.Controllers
 				.AnyAsync(aspect => aspect.Id == knowledgeAspectId);
 
 			return aspectExists ? null : "Аспект знаний не найден";
+		}
+
+		private async Task<string?> ValidateCausalRuleAsync(CausalErrorRuleEditDTO dto)
+		{
+			if (dto == null)
+			{
+				return "Данные правила не переданы";
+			}
+
+			if (dto.Weight <= 0 || dto.Weight > MaxLinkWeight)
+			{
+				return "Вес правила должен быть больше 0 и не больше 1";
+			}
+
+			if (dto.SourceErrorTypeId == dto.TargetErrorTypeId)
+			{
+				return "Исходный и целевой тип ошибки должны отличаться";
+			}
+
+			var taskTypeExists = await _context.TaskTypes
+				.AsNoTracking()
+				.AnyAsync(taskType => taskType.Id == dto.TaskTypeId);
+
+			if (!taskTypeExists)
+			{
+				return "Тип задания не найден";
+			}
+
+			var relationTypeExists = await _context.CausalRelationTypes
+				.AsNoTracking()
+				.AnyAsync(relationType => relationType.Id == dto.RelationTypeId);
+
+			if (!relationTypeExists)
+			{
+				return "Тип причинной связи не найден";
+			}
+
+			var requestedErrorTypeIds = new[] { dto.SourceErrorTypeId, dto.TargetErrorTypeId }
+				.Distinct()
+				.ToList();
+			var existingErrorTypeIds = await _context.ErrorTypes
+				.AsNoTracking()
+				.Where(errorType => requestedErrorTypeIds.Contains(errorType.Id))
+				.Select(errorType => errorType.Id)
+				.ToListAsync();
+
+			return existingErrorTypeIds.Count == requestedErrorTypeIds.Count
+				? null
+				: "Один из типов ошибок не найден";
 		}
 	}
 }

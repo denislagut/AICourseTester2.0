@@ -4,7 +4,19 @@ let activeCompareDateInput = null;
 let filterDictionaries = { errorTypes: [], knowledgeAspects: [] };
 let analyticsFilters = { excludedErrorTypeIds: [], excludedKnowledgeAspectIds: [] };
 let knowledgeManagementState = { errorTypes: [], aspects: [], links: [] };
+let causalRulesState = { taskTypes: [], relationTypes: [], errorTypes: [], rules: [] };
 const COMPARISON_TIME_OFFSET_HOURS = 6;
+const CAUSAL_RULE_TASK_TYPES = [
+    { id: 1, code: 'AlphaBeta', name: 'min-max алгоритм' },
+    { id: 2, code: 'FifteenPuzzle', name: 'Пятнашки A*' }
+];
+const CAUSAL_RULE_RELATION_TYPES = [
+    { id: 1, code: 'CAUSES', name: 'Вызывает' },
+    { id: 2, code: 'EXPLAINS', name: 'Объясняет' },
+    { id: 3, code: 'MAY_CAUSE', name: 'Может вызвать' },
+    { id: 4, code: 'CONTEXT_FOR', name: 'Контекст для' },
+    { id: 5, code: 'SUMMARIZES', name: 'Обобщает' }
+];
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!restrictTeacherAccess()) return;
@@ -42,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('error-type-aspect-form').addEventListener('submit', addErrorTypeAspectLink);
     document.getElementById('knowledge-aspects-list').addEventListener('click', handleAspectListClick);
     document.getElementById('knowledge-links-table-body').addEventListener('click', handleKnowledgeLinkTableClick);
+    initCausalRulesManagement();
     document.getElementById('profile-tooltip__button-logout').addEventListener('click', logout);
 
     loadSummary();
@@ -697,6 +710,317 @@ async function refreshKnowledgeLinks() {
     const links = await loadErrorTypeAspectLinks();
     knowledgeManagementState.links = Array.isArray(links) ? links : [];
     renderErrorTypeAspectLinks();
+}
+
+function initCausalRulesManagement() {
+    const form = document.getElementById('causal-rule-form');
+    const clearButton = document.getElementById('clear-causal-rule-form');
+    const tableBody = document.getElementById('causal-rules-table-body');
+
+    if (!form || !clearButton || !tableBody) {
+        return;
+    }
+
+    form.addEventListener('submit', saveCausalRule);
+    clearButton.addEventListener('click', clearCausalRuleForm);
+    tableBody.addEventListener('click', handleCausalRulesTableClick);
+    loadCausalRulesManagementData();
+}
+
+async function loadCausalRulesManagementData() {
+    const status = document.getElementById('causal-rules-status');
+
+    try {
+        status.textContent = 'Загрузка...';
+        status.classList.remove('error');
+
+        const [errorTypes, rules] = await Promise.all([
+            authorizedGet('/KnowledgeManagement/ErrorTypes'),
+            authorizedGet('/KnowledgeManagement/CausalRules')
+        ]);
+
+        causalRulesState = {
+            taskTypes: CAUSAL_RULE_TASK_TYPES,
+            relationTypes: CAUSAL_RULE_RELATION_TYPES,
+            errorTypes: Array.isArray(errorTypes) ? errorTypes : [],
+            rules: Array.isArray(rules) ? rules : []
+        };
+
+        renderCausalRulesManagementData();
+        status.textContent = '';
+    } catch (error) {
+        setError(status, `Не удалось загрузить причинно-следственные правила: ${error.message}`);
+    }
+}
+
+function renderCausalRulesManagementData() {
+    renderCausalRuleSelect(
+        'causal-rule-task-type',
+        causalRulesState.taskTypes,
+        'Выберите тип задания',
+        item => `${item.name ?? item.Name ?? 'Тип задания'} (${item.code ?? item.Code ?? '-'})`
+    );
+    renderCausalRuleSelect(
+        'causal-rule-source-error',
+        causalRulesState.errorTypes,
+        'Выберите ошибку-причину',
+        item => `${item.name ?? item.Name ?? 'Тип ошибки'} (${item.code ?? item.Code ?? '-'})`
+    );
+    renderCausalRuleSelect(
+        'causal-rule-target-error',
+        causalRulesState.errorTypes,
+        'Выберите ошибку-следствие',
+        item => `${item.name ?? item.Name ?? 'Тип ошибки'} (${item.code ?? item.Code ?? '-'})`
+    );
+    renderCausalRuleSelect(
+        'causal-rule-relation-type',
+        causalRulesState.relationTypes,
+        'Выберите тип связи',
+        item => `${translateCausalRelation(item.code ?? item.Code)} (${item.code ?? item.Code ?? '-'})`
+    );
+    renderCausalRulesTable();
+}
+
+function renderCausalRuleSelect(selectId, items, placeholder, labelFactory) {
+    const select = document.getElementById(selectId);
+    select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
+
+    if (!Array.isArray(items) || items.length === 0) {
+        select.innerHTML = '<option value="">Данные не найдены</option>';
+        select.disabled = true;
+        return;
+    }
+
+    select.disabled = false;
+    select.innerHTML += items.map(item => {
+        const id = item.id ?? item.Id;
+        return `<option value="${escapeHtml(id)}">${escapeHtml(labelFactory(item))}</option>`;
+    }).join('');
+}
+
+function renderCausalRulesTable() {
+    const tbody = document.getElementById('causal-rules-table-body');
+
+    if (causalRulesState.rules.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8">Правила пока не созданы.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = causalRulesState.rules.map(rule => {
+        const normalizedRule = normalizeCausalRule(rule);
+        const conditions = [
+            normalizedRule.sameNodeRequired ? 'тот же узел' : null,
+            normalizedRule.sameRootBranchRequired ? 'та же корневая ветка' : null
+        ].filter(Boolean).join(', ') || 'без дополнительных условий';
+
+        return `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(normalizedRule.taskTypeName)}</strong>
+                    <span class="causal-rule-code">${escapeHtml(normalizedRule.taskTypeCode)}</span>
+                </td>
+                <td>
+                    <strong>${escapeHtml(normalizedRule.sourceErrorTypeName)}</strong>
+                    <span class="causal-rule-code">${escapeHtml(normalizedRule.sourceErrorTypeCode)}</span>
+                </td>
+                <td>
+                    <strong>${escapeHtml(normalizedRule.targetErrorTypeName)}</strong>
+                    <span class="causal-rule-code">${escapeHtml(normalizedRule.targetErrorTypeCode)}</span>
+                </td>
+                <td>${escapeHtml(normalizedRule.relationTypeName)}</td>
+                <td>${escapeHtml(formatValue(normalizedRule.weight))}</td>
+                <td>${escapeHtml(conditions)}</td>
+                <td>
+                    <span class="causal-rule-status ${normalizedRule.isActive ? 'causal-rule-status--active' : 'causal-rule-status--inactive'}">
+                        ${normalizedRule.isActive ? 'Активно' : 'Отключено'}
+                    </span>
+                </td>
+                <td>
+                    <div class="button-row causal-rule-actions">
+                        <button type="button" class="button-secondary causal-rule-edit-button" data-rule-id="${escapeHtml(normalizedRule.id)}">Изменить</button>
+                        <button type="button" class="button-secondary causal-rule-delete-button" data-rule-id="${escapeHtml(normalizedRule.id)}">Удалить</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function saveCausalRule(event) {
+    event.preventDefault();
+
+    const status = document.getElementById('causal-rules-status');
+    const ruleId = document.getElementById('causal-rule-id').value;
+    const payload = {
+        taskTypeId: Number(document.getElementById('causal-rule-task-type').value),
+        sourceErrorTypeId: Number(document.getElementById('causal-rule-source-error').value),
+        targetErrorTypeId: Number(document.getElementById('causal-rule-target-error').value),
+        relationTypeId: Number(document.getElementById('causal-rule-relation-type').value),
+        weight: Number(document.getElementById('causal-rule-weight').value),
+        sameNodeRequired: document.getElementById('causal-rule-same-node').checked,
+        sameRootBranchRequired: document.getElementById('causal-rule-same-root-branch').checked,
+        isActive: document.getElementById('causal-rule-active').checked
+    };
+
+    if (!payload.taskTypeId || !payload.sourceErrorTypeId || !payload.targetErrorTypeId || !payload.relationTypeId) {
+        alert('Заполните тип задания, типы ошибок и тип связи');
+        return;
+    }
+
+    if (payload.sourceErrorTypeId === payload.targetErrorTypeId) {
+        alert('Исходный и целевой тип ошибки должны отличаться');
+        return;
+    }
+
+    if (!Number.isFinite(payload.weight) || payload.weight <= 0 || payload.weight > 1) {
+        alert('Вес правила должен быть числом больше 0 и не больше 1');
+        return;
+    }
+
+    const taskType = findCausalRuleOption(causalRulesState.taskTypes, payload.taskTypeId);
+    const relationType = findCausalRuleOption(causalRulesState.relationTypes, payload.relationTypeId);
+    const sourceErrorType = findCausalRuleOption(causalRulesState.errorTypes, payload.sourceErrorTypeId);
+    const targetErrorType = findCausalRuleOption(causalRulesState.errorTypes, payload.targetErrorTypeId);
+
+    payload.taskType = taskType?.code || taskType?.Code || '';
+    payload.relationType = relationType?.code || relationType?.Code || '';
+    payload.sourceErrorCode = sourceErrorType?.code || sourceErrorType?.Code || '';
+    payload.targetErrorCode = targetErrorType?.code || targetErrorType?.Code || '';
+
+    try {
+        status.textContent = 'Сохранение правила...';
+        status.classList.remove('error');
+
+        if (ruleId) {
+            await authorizedPut(`/KnowledgeManagement/CausalRules/${encodeURIComponent(ruleId)}`, payload);
+            status.textContent = 'Правило обновлено.';
+        } else {
+            await authorizedPost('/KnowledgeManagement/CausalRules', payload);
+            status.textContent = 'Правило сохранено. Если такая связь уже была, её вес обновлён.';
+        }
+
+        clearCausalRuleForm();
+        await refreshCausalRules();
+    } catch (error) {
+        alert(error.message || 'Не удалось сохранить причинно-следственное правило');
+        setError(status, error.message || 'Не удалось сохранить причинно-следственное правило');
+    }
+}
+
+function handleCausalRulesTableClick(event) {
+    const editButton = event.target.closest('.causal-rule-edit-button');
+    const deleteButton = event.target.closest('.causal-rule-delete-button');
+
+    if (editButton) {
+        const rule = causalRulesState.rules
+            .find(item => String(item.id ?? item.Id) === String(editButton.dataset.ruleId));
+
+        if (rule) {
+            fillCausalRuleForm(rule);
+        }
+
+        return;
+    }
+
+    if (deleteButton) {
+        deleteCausalRule(deleteButton.dataset.ruleId);
+    }
+}
+
+function fillCausalRuleForm(rule) {
+    const normalizedRule = normalizeCausalRule(rule);
+
+    document.getElementById('causal-rule-id').value = normalizedRule.id || '';
+    document.getElementById('causal-rule-task-type').value = normalizedRule.taskTypeId || '';
+    document.getElementById('causal-rule-source-error').value = normalizedRule.sourceErrorTypeId || '';
+    document.getElementById('causal-rule-target-error').value = normalizedRule.targetErrorTypeId || '';
+    document.getElementById('causal-rule-relation-type').value = normalizedRule.relationTypeId || '';
+    document.getElementById('causal-rule-weight').value = normalizedRule.weight || 1;
+    document.getElementById('causal-rule-same-node').checked = Boolean(normalizedRule.sameNodeRequired);
+    document.getElementById('causal-rule-same-root-branch').checked = Boolean(normalizedRule.sameRootBranchRequired);
+    document.getElementById('causal-rule-active').checked = Boolean(normalizedRule.isActive);
+    document.getElementById('causal-rule-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function clearCausalRuleForm() {
+    document.getElementById('causal-rule-id').value = '';
+    document.getElementById('causal-rule-form').reset();
+    document.getElementById('causal-rule-weight').value = '1';
+    document.getElementById('causal-rule-active').checked = true;
+}
+
+async function deleteCausalRule(ruleId) {
+    if (!confirm('Удалить причинно-следственное правило?')) {
+        return;
+    }
+
+    const status = document.getElementById('causal-rules-status');
+
+    try {
+        status.textContent = 'Удаление правила...';
+        status.classList.remove('error');
+        await authorizedDelete(`/KnowledgeManagement/CausalRules/${encodeURIComponent(ruleId)}`);
+        status.textContent = 'Правило удалено.';
+        await refreshCausalRules();
+    } catch (error) {
+        alert(error.message || 'Не удалось удалить причинно-следственное правило');
+        setError(status, error.message || 'Не удалось удалить причинно-следственное правило');
+    }
+}
+
+async function refreshCausalRules() {
+    const rules = await authorizedGet('/KnowledgeManagement/CausalRules');
+    causalRulesState.rules = Array.isArray(rules) ? rules : [];
+    renderCausalRulesTable();
+}
+
+function translateCausalRelation(code) {
+    const translations = {
+        CAUSES: 'Вызывает',
+        EXPLAINS: 'Объясняет',
+        MAY_CAUSE: 'Может вызвать',
+        CONTEXT_FOR: 'Контекст для',
+        SUMMARIZES: 'Обобщает'
+    };
+
+    return translations[code] || code || 'Тип связи';
+}
+
+function normalizeCausalRule(rule) {
+    const taskTypeId = rule.taskTypeId ?? rule.TaskTypeId ?? rule.taskTypeRef?.id ?? rule.TaskTypeRef?.Id;
+    const relationTypeId = rule.relationTypeId ?? rule.RelationTypeId ?? rule.relationTypeRef?.id ?? rule.RelationTypeRef?.Id;
+    const sourceErrorTypeId = rule.sourceErrorTypeId ?? rule.SourceErrorTypeId ?? rule.sourceErrorType?.id ?? rule.SourceErrorType?.Id;
+    const targetErrorTypeId = rule.targetErrorTypeId ?? rule.TargetErrorTypeId ?? rule.targetErrorType?.id ?? rule.TargetErrorType?.Id;
+    const taskType = findCausalRuleOption(causalRulesState.taskTypes, taskTypeId);
+    const relationType = findCausalRuleOption(causalRulesState.relationTypes, relationTypeId);
+    const sourceErrorType = findCausalRuleOption(causalRulesState.errorTypes, sourceErrorTypeId);
+    const targetErrorType = findCausalRuleOption(causalRulesState.errorTypes, targetErrorTypeId);
+    const relationCode = rule.relationTypeCode ?? rule.RelationTypeCode ?? rule.relationType ?? rule.RelationType ?? rule.relationTypeRef?.code ?? rule.RelationTypeRef?.Code ?? relationType?.code ?? relationType?.Code ?? '';
+
+    return {
+        id: rule.id ?? rule.Id,
+        taskTypeId,
+        taskTypeCode: rule.taskTypeCode ?? rule.TaskTypeCode ?? rule.taskType ?? rule.TaskType ?? rule.taskTypeRef?.code ?? rule.TaskTypeRef?.Code ?? taskType?.code ?? taskType?.Code ?? '',
+        taskTypeName: rule.taskTypeName ?? rule.TaskTypeName ?? rule.taskTypeRef?.name ?? rule.TaskTypeRef?.Name ?? taskType?.name ?? taskType?.Name ?? 'Тип задания',
+        sourceErrorTypeId,
+        sourceErrorTypeCode: rule.sourceErrorTypeCode ?? rule.SourceErrorTypeCode ?? rule.sourceErrorCode ?? rule.SourceErrorCode ?? rule.sourceErrorType?.code ?? rule.SourceErrorType?.Code ?? sourceErrorType?.code ?? sourceErrorType?.Code ?? '-',
+        sourceErrorTypeName: rule.sourceErrorTypeName ?? rule.SourceErrorTypeName ?? rule.sourceErrorType?.name ?? rule.SourceErrorType?.Name ?? sourceErrorType?.name ?? sourceErrorType?.Name ?? 'Тип ошибки',
+        targetErrorTypeId,
+        targetErrorTypeCode: rule.targetErrorTypeCode ?? rule.TargetErrorTypeCode ?? rule.targetErrorCode ?? rule.TargetErrorCode ?? rule.targetErrorType?.code ?? rule.TargetErrorType?.Code ?? targetErrorType?.code ?? targetErrorType?.Code ?? '-',
+        targetErrorTypeName: rule.targetErrorTypeName ?? rule.TargetErrorTypeName ?? rule.targetErrorType?.name ?? rule.TargetErrorType?.Name ?? targetErrorType?.name ?? targetErrorType?.Name ?? 'Тип ошибки',
+        relationTypeId,
+        relationTypeCode: relationCode,
+        relationTypeName: rule.relationTypeName ?? rule.RelationTypeName ?? rule.relationTypeRef?.name ?? rule.RelationTypeRef?.Name ?? relationType?.name ?? relationType?.Name ?? translateCausalRelation(relationCode),
+        weight: rule.weight ?? rule.Weight ?? 1,
+        sameNodeRequired: rule.sameNodeRequired ?? rule.SameNodeRequired ?? false,
+        sameRootBranchRequired: rule.sameRootBranchRequired ?? rule.SameRootBranchRequired ?? false,
+        isActive: rule.isActive ?? rule.IsActive ?? true
+    };
+}
+
+function findCausalRuleOption(items, id) {
+    return (Array.isArray(items) ? items : [])
+        .find(item => String(item.id ?? item.Id) === String(id));
 }
 
 function renderFilterLists() {

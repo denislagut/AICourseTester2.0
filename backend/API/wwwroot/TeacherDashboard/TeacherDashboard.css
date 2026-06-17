@@ -1374,9 +1374,199 @@
     flex-wrap: nowrap;
 }
 
+.causal-rules-section {
+    margin-top: 16px;
+}
+
+.causal-rules-section .causal-rules-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    align-items: start;
+}
+
+.causal-rules-section #causal-rule-form {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 10px 8px;
+    align-items: end;
+}
+
+.causal-rules-section #causal-rule-form .causal-field-task,
+.causal-rules-section #causal-rule-form .causal-field-relation {
+    grid-column: span 3;
+}
+
+.causal-rules-section #causal-rule-form .causal-field-error {
+    grid-column: span 4;
+}
+
+.causal-rules-section #causal-rule-form .causal-field-weight {
+    grid-column: span 2;
+}
+
+.causal-rules-section #causal-rule-form select {
+    min-height: 52px;
+    height: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+}
+
+.causal-rules-section #causal-rule-form option {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.causal-rules-section #causal-rule-form .checkbox-row {
+    grid-column: span 2;
+    min-height: 38px;
+    align-self: center;
+}
+
+.causal-rules-section #causal-rule-form .button-row {
+    grid-column: span 4;
+    align-self: end;
+}
+
+.causal-rules-section .causal-rules-panel {
+    margin-top: 14px;
+}
+
+.causal-rules-section .causal-rules-table-wrapper {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 520px;
+    border: 1px solid #E7E7E7;
+    border-radius: 8px;
+}
+
+.causal-rules-section .causal-rules-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.causal-rules-section .causal-rules-table th,
+.causal-rules-section .causal-rules-table td {
+    border-bottom: 1px solid #E7E7E7;
+    padding: 9px 8px;
+    text-align: left;
+    vertical-align: top;
+    font-size: clamp(13px, 1.6vw, 15px);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.causal-rules-section .causal-rules-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.causal-rules-section .causal-rules-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #EDEDED;
+    font-weight: 700;
+}
+
+.causal-rules-section .causal-rules-table th:nth-child(1),
+.causal-rules-section .causal-rules-table td:nth-child(1) {
+    width: 10%;
+}
+
+.causal-rules-section .causal-rules-table th:nth-child(2),
+.causal-rules-section .causal-rules-table td:nth-child(2),
+.causal-rules-section .causal-rules-table th:nth-child(3),
+.causal-rules-section .causal-rules-table td:nth-child(3) {
+    width: 17%;
+}
+
+.causal-rules-section .causal-rules-table th:nth-child(4),
+.causal-rules-section .causal-rules-table td:nth-child(4) {
+    width: 11%;
+}
+
+.causal-rules-section .causal-rules-table th:nth-child(5),
+.causal-rules-section .causal-rules-table td:nth-child(5) {
+    width: 58px;
+    text-align: center;
+}
+
+.causal-rules-section .causal-rules-table th:nth-child(6),
+.causal-rules-section .causal-rules-table td:nth-child(6) {
+    width: 14%;
+}
+
+.causal-rules-section .causal-rules-table th:nth-child(7),
+.causal-rules-section .causal-rules-table td:nth-child(7) {
+    width: 92px;
+}
+
+.causal-rules-section .causal-rules-table th:nth-child(8),
+.causal-rules-section .causal-rules-table td:nth-child(8) {
+    width: 136px;
+}
+
+.causal-rules-section .causal-rule-code {
+    display: block;
+    margin-top: 4px;
+    color: #555555;
+    font-size: clamp(12px, 1.5vw, 13px);
+    line-height: 1.2;
+}
+
+.causal-rules-section .causal-rule-status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: clamp(12px, 1.5vw, 13px);
+    font-weight: 700;
+    line-height: 1;
+}
+
+.causal-rules-section .causal-rule-status--active {
+    background: #F1F7F1;
+    color: #1F6D32;
+}
+
+.causal-rules-section .causal-rule-status--inactive {
+    background: #F5F5F5;
+    color: #707070;
+}
+
+.causal-rules-section .causal-rule-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.causal-rules-section .causal-rule-actions button {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: clamp(12px, 1.5vw, 14px);
+}
+
 @media (max-width: 1180px) {
     .knowledge-management-section .knowledge-management-grid {
         grid-template-columns: 1fr;
+    }
+
+    .causal-rules-section .causal-rules-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .causal-rules-section #causal-rule-form {
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+    }
+
+    .causal-rules-section #causal-rule-form .causal-field-task,
+    .causal-rules-section #causal-rule-form .causal-field-relation,
+    .causal-rules-section #causal-rule-form .causal-field-error,
+    .causal-rules-section #causal-rule-form .causal-field-weight,
+    .causal-rules-section #causal-rule-form .checkbox-row,
+    .causal-rules-section #causal-rule-form .button-row {
+        grid-column: span 1;
     }
 
     .knowledge-management-section .aspects-list {
@@ -1395,5 +1585,18 @@
     .knowledge-management-section .knowledge-form button,
     .knowledge-management-section .button-row button {
         width: 100%;
+    }
+
+    .causal-rules-section #causal-rule-form {
+        grid-template-columns: 1fr;
+    }
+
+    .causal-rules-section #causal-rule-form .causal-field-task,
+    .causal-rules-section #causal-rule-form .causal-field-relation,
+    .causal-rules-section #causal-rule-form .causal-field-error,
+    .causal-rules-section #causal-rule-form .causal-field-weight,
+    .causal-rules-section #causal-rule-form .checkbox-row,
+    .causal-rules-section #causal-rule-form .button-row {
+        grid-column: 1;
     }
 }
