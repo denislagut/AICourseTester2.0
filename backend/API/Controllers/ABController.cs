@@ -338,7 +338,7 @@ namespace AICourseTester.Controllers
 				.Select(e => new
 				{
 					e.Id,
-					e.Code,
+					Code = e.ErrorType == null ? null : e.ErrorType.Code,
 					e.Message,
 					e.NodeId,
 					e.TreeLevel,
@@ -386,7 +386,7 @@ namespace AICourseTester.Controllers
 				.Select(e => new
 				{
 					e.Id,
-					e.Code,
+					Code = e.ErrorType == null ? null : e.ErrorType.Code,
 					e.Message,
 					ErrorType = e.ErrorType == null ? null : new
 					{
@@ -516,25 +516,23 @@ namespace AICourseTester.Controllers
 				.Where(l =>
 					l.SourceError.AlphaBetaId == ab.Id ||
 					l.TargetError.AlphaBetaId == ab.Id)
-				.Include(l => l.SourceError)
-				.Include(l => l.TargetError)
 				.OrderByDescending(l => l.Weight)
 				.Select(l => new
 				{
 					l.Id,
-					l.RelationType,
+					RelationType = l.RelationTypeRef.Code,
 					l.Weight,
 					SourceError = new
 					{
 						l.SourceError.Id,
-						l.SourceError.Code,
+						Code = l.SourceError.ErrorType == null ? null : l.SourceError.ErrorType.Code,
 						l.SourceError.Message,
 						l.SourceError.NodeId
 					},
 					TargetError = new
 					{
 						l.TargetError.Id,
-						l.TargetError.Code,
+						Code = l.TargetError.ErrorType == null ? null : l.TargetError.ErrorType.Code,
 						l.TargetError.Message,
 						l.TargetError.NodeId
 					}
@@ -559,25 +557,23 @@ namespace AICourseTester.Controllers
 				.Where(l =>
 					l.SourceError.AlphaBetaId == ab.Id ||
 					l.TargetError.AlphaBetaId == ab.Id)
-				.Include(l => l.SourceError)
-				.Include(l => l.TargetError)
 				.OrderByDescending(l => l.Weight)
 				.Select(l => new
 				{
 					l.Id,
-					l.RelationType,
+					RelationType = l.RelationTypeRef.Code,
 					l.Weight,
 					SourceError = new
 					{
 						l.SourceError.Id,
-						l.SourceError.Code,
+						Code = l.SourceError.ErrorType == null ? null : l.SourceError.ErrorType.Code,
 						l.SourceError.Message,
 						l.SourceError.NodeId
 					},
 					TargetError = new
 					{
 						l.TargetError.Id,
-						l.TargetError.Code,
+						Code = l.TargetError.ErrorType == null ? null : l.TargetError.ErrorType.Code,
 						l.TargetError.Message,
 						l.TargetError.NodeId
 					}

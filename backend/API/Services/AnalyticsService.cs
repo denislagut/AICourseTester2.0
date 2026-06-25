@@ -281,7 +281,7 @@ namespace AICourseTester.Services
 				HighSeverityErrorsCount = errors.Count(e => e.SeverityScore >= HighSeverityThreshold),
 				TopErrorTypes = BuildTopErrorTypes(errors),
 				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps),
-				GroupProgress = BuildLearningProgress(gaps),
+				GroupProgress = BuildLearningProgress(gaps, useLatestSnapshotPerAspect: false),
 				StudentsStatistics = groupStudents
 					.Select(student => BuildStudentGroupStatistics(
 						student.UserId,
@@ -880,7 +880,7 @@ namespace AICourseTester.Services
 		{
 			var excludedErrorTypeIds = await BuildExcludedErrorTypeIdsAsync(filters);
 			var excludedErrorTypeCodes = await BuildExcludedErrorTypeCodesAsync(excludedErrorTypeIds);
-			var excludedKnowledgeAspectIds = NormalizeIds(filters?.ExcludedKnowledgeAspectIds);
+			var excludedKnowledgeAspectIds = await BuildExcludedKnowledgeAspectIdsAsync(filters);
 
 			var filteredErrors = excludedErrorTypeIds.Count == 0 && excludedErrorTypeCodes.Count == 0
 				? errors
@@ -945,6 +945,30 @@ namespace AICourseTester.Services
 			return codes
 				.Where(code => !string.IsNullOrWhiteSpace(code))
 				.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		}
+
+		private async Task<HashSet<int>> BuildExcludedKnowledgeAspectIdsAsync(AnalyticsFilterDTO? filters)
+		{
+			var excludedKnowledgeAspectIds = NormalizeIds(filters?.ExcludedKnowledgeAspectIds);
+			var excludedErrorTypeIds = NormalizeIds(filters?.ExcludedErrorTypeIds);
+
+			if (excludedErrorTypeIds.Count == 0)
+			{
+				return excludedKnowledgeAspectIds;
+			}
+
+			var linkedAspectIds = await _context.ErrorTypeAspects
+				.AsNoTracking()
+				.Where(link => excludedErrorTypeIds.Contains(link.ErrorTypeId))
+				.Select(link => link.KnowledgeAspectId)
+				.ToListAsync();
+
+			foreach (var aspectId in linkedAspectIds)
+			{
+				excludedKnowledgeAspectIds.Add(aspectId);
+			}
+
+			return excludedKnowledgeAspectIds;
 		}
 
 		private static HashSet<int> NormalizeIds(IEnumerable<int>? ids)
@@ -1228,7 +1252,9 @@ namespace AICourseTester.Services
 				: Math.Round(gaps.Average(g => g.GapScore), 2);
 		}
 
-		private static LearningProgressDTO BuildLearningProgress(IReadOnlyCollection<Models.KnowledgeGap> gaps)
+		private static LearningProgressDTO BuildLearningProgress(
+			IReadOnlyCollection<Models.KnowledgeGap> gaps,
+			bool useLatestSnapshotPerAspect = true)
 		{
 			var progressItems = gaps
 				.Where(gap => gap.KnowledgeAspect != null)
@@ -1240,15 +1266,48 @@ namespace AICourseTester.Services
 				})
 				.Select(group =>
 				{
-					var latest = group
+					var orderedGroup = group
 						.OrderByDescending(gap => gap.AnalysisRunId.HasValue)
 						.ThenByDescending(gap => gap.CreatedAt)
 						.ThenByDescending(gap => gap.AnalysisRunId ?? 0)
 						.ThenByDescending(gap => gap.Id)
-						.First();
-					var current = latest.GapScore;
-					var previous = latest.PreviousGapScore;
-					var delta = latest.GapScoreDelta ?? (previous.HasValue ? current - previous.Value : 0);
+						.ToList();
+
+					var latest = orderedGroup.First();
+					double current;
+					double? previous;
+					double delta;
+					string trend;
+					string level;
+
+					if (useLatestSnapshotPerAspect)
+					{
+						current = latest.GapScore;
+						previous = latest.PreviousGapScore;
+						delta = latest.GapScoreDelta ?? (previous.HasValue ? current - previous.Value : 0);
+						trend = string.IsNullOrWhiteSpace(latest.Trend) ? BuildTrend(delta) : latest.Trend;
+						level = string.IsNullOrWhiteSpace(latest.Level) ? "Low" : latest.Level;
+					}
+					else
+					{
+						current = orderedGroup.Average(gap => gap.GapScore);
+						var previousValues = orderedGroup
+							.Where(gap => gap.PreviousGapScore.HasValue)
+							.Select(gap => gap.PreviousGapScore!.Value)
+							.ToList();
+						previous = previousValues.Count == 0 ? null : previousValues.Average();
+						var deltaValues = orderedGroup
+							.Where(gap => gap.GapScoreDelta.HasValue)
+							.Select(gap => gap.GapScoreDelta!.Value)
+							.ToList();
+						delta = deltaValues.Count > 0
+							? deltaValues.Average()
+							: previous.HasValue
+								? current - previous.Value
+								: 0;
+						trend = BuildTrend(delta);
+						level = GetDominantLevel(orderedGroup);
+					}
 
 					return new KnowledgeGapProgressDTO
 					{
@@ -1258,8 +1317,8 @@ namespace AICourseTester.Services
 						PreviousGapScore = previous.HasValue ? Math.Round(previous.Value, 2) : null,
 						CurrentGapScore = Math.Round(current, 2),
 						GapScoreDelta = Math.Round(delta, 2),
-						Trend = string.IsNullOrWhiteSpace(latest.Trend) ? BuildTrend(delta) : latest.Trend,
-						Level = string.IsNullOrWhiteSpace(latest.Level) ? "Low" : latest.Level
+						Trend = trend,
+						Level = level
 					};
 				})
 				.OrderByDescending(item => Math.Abs(item.GapScoreDelta))

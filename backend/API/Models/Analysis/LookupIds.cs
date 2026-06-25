@@ -62,5 +62,15 @@ namespace AICourseTester.Models.Analysis
 			"SUMMARIZES" => 5,
 			_ => 1
 		};
+
+		public static string CausalRelationTypeCode(int id) => id switch
+		{
+			1 => "CAUSES",
+			2 => "EXPLAINS",
+			3 => "MAY_CAUSE",
+			4 => "CONTEXT_FOR",
+			5 => "SUMMARIZES",
+			_ => "CAUSES"
+		};
 	}
 }

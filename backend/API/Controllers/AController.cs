@@ -210,8 +210,35 @@ namespace AICourseTester.Controllers
 
 			var errors = await _context.ErrorRecords
 				.Where(e => e.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") && e.FifteenPuzzleId == fp.Id)
+				.Include(e => e.ErrorType)
 				.OrderBy(e => e.Id)
-				.ToListAsync();
+				.Select(e => new
+				{
+					e.Id,
+					Code = e.ErrorType == null ? null : e.ErrorType.Code,
+					e.Message,
+					e.NodeId,
+					e.TreeLevel,
+					e.ElementType,
+					e.ExpectedA,
+					e.ActualA,
+					e.ExpectedB,
+					e.ActualB,
+					e.PathStepIndex,
+					e.ExpectedPathNodeId,
+					e.ActualPathNodeId,
+					e.SeverityScore,
+					e.GroupKey,
+					ErrorType = e.ErrorType == null ? null : new
+					{
+						e.ErrorType.Id,
+						e.ErrorType.Code,
+						e.ErrorType.Name,
+						e.ErrorType.Description,
+						e.ErrorType.DefaultSeverity
+					}
+				})
+				.ToListAsync<object>();
 
 			return Ok(errors);
 		}
@@ -230,6 +257,7 @@ namespace AICourseTester.Controllers
 			var gaps = await _context.KnowledgeGaps
 				.Where(g => g.TaskTypeId == LookupIds.TaskTypeId("FifteenPuzzle") && g.FifteenPuzzleId == fp.Id)
 				.Include(g => g.KnowledgeAspect)
+				.Include(g => g.LevelRef)
 				.OrderByDescending(g => g.GapScore)
 				.Select(g => new
 				{
@@ -241,7 +269,7 @@ namespace AICourseTester.Controllers
 					g.TotalWeight,
 					g.AverageSeverity,
 					g.GapScore,
-					g.Level,
+					Level = g.LevelRef.Code,
 					g.CreatedAt
 				})
 				.ToListAsync<object>();
@@ -312,25 +340,23 @@ namespace AICourseTester.Controllers
 				.Where(l =>
 					l.SourceError.FifteenPuzzleId == puzzle.Id ||
 					l.TargetError.FifteenPuzzleId == puzzle.Id)
-				.Include(l => l.SourceError)
-				.Include(l => l.TargetError)
 				.OrderByDescending(l => l.Weight)
 				.Select(l => new
 				{
 					l.Id,
-					l.RelationType,
+					RelationType = l.RelationTypeRef.Code,
 					l.Weight,
 					SourceError = new
 					{
 						l.SourceError.Id,
-						l.SourceError.Code,
+						Code = l.SourceError.ErrorType == null ? null : l.SourceError.ErrorType.Code,
 						l.SourceError.Message,
 						l.SourceError.NodeId
 					},
 					TargetError = new
 					{
 						l.TargetError.Id,
-						l.TargetError.Code,
+						Code = l.TargetError.ErrorType == null ? null : l.TargetError.ErrorType.Code,
 						l.TargetError.Message,
 						l.TargetError.NodeId
 					}
@@ -355,25 +381,23 @@ namespace AICourseTester.Controllers
 				.Where(l =>
 					l.SourceError.FifteenPuzzleId == puzzle.Id ||
 					l.TargetError.FifteenPuzzleId == puzzle.Id)
-				.Include(l => l.SourceError)
-				.Include(l => l.TargetError)
 				.OrderByDescending(l => l.Weight)
 				.Select(l => new
 				{
 					l.Id,
-					l.RelationType,
+					RelationType = l.RelationTypeRef.Code,
 					l.Weight,
 					SourceError = new
 					{
 						l.SourceError.Id,
-						l.SourceError.Code,
+						Code = l.SourceError.ErrorType == null ? null : l.SourceError.ErrorType.Code,
 						l.SourceError.Message,
 						l.SourceError.NodeId
 					},
 					TargetError = new
 					{
 						l.TargetError.Id,
-						l.TargetError.Code,
+						Code = l.TargetError.ErrorType == null ? null : l.TargetError.ErrorType.Code,
 						l.TargetError.Message,
 						l.TargetError.NodeId
 					}

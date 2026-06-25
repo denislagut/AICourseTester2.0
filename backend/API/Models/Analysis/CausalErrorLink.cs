@@ -18,7 +18,7 @@ namespace AICourseTester.Models.Analysis
 		[NotMapped]
 		public string RelationType
 		{
-			get => RelationTypeRef?.Code ?? string.Empty;
+			get => RelationTypeRef?.Code ?? LookupIds.CausalRelationTypeCode(RelationTypeId);
 			set => RelationTypeId = LookupIds.CausalRelationTypeId(value);
 		}
 
