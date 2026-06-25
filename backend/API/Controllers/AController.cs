@@ -318,19 +318,19 @@ namespace AICourseTester.Controllers
 				.Select(l => new
 				{
 					l.Id,
-					l.RelationType,
+					RelationType = l.RelationTypeRef.Code,
 					l.Weight,
 					SourceError = new
 					{
 						l.SourceError.Id,
-						l.SourceError.Code,
+						Code = l.SourceError.ErrorType == null ? string.Empty : l.SourceError.ErrorType.Code,
 						l.SourceError.Message,
 						l.SourceError.NodeId
 					},
 					TargetError = new
 					{
 						l.TargetError.Id,
-						l.TargetError.Code,
+						Code = l.TargetError.ErrorType == null ? string.Empty : l.TargetError.ErrorType.Code,
 						l.TargetError.Message,
 						l.TargetError.NodeId
 					}
@@ -361,19 +361,19 @@ namespace AICourseTester.Controllers
 				.Select(l => new
 				{
 					l.Id,
-					l.RelationType,
+					RelationType = l.RelationTypeRef.Code,
 					l.Weight,
 					SourceError = new
 					{
 						l.SourceError.Id,
-						l.SourceError.Code,
+						Code = l.SourceError.ErrorType == null ? string.Empty : l.SourceError.ErrorType.Code,
 						l.SourceError.Message,
 						l.SourceError.NodeId
 					},
 					TargetError = new
 					{
 						l.TargetError.Id,
-						l.TargetError.Code,
+						Code = l.TargetError.ErrorType == null ? string.Empty : l.TargetError.ErrorType.Code,
 						l.TargetError.Message,
 						l.TargetError.NodeId
 					}
