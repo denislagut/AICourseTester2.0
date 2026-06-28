@@ -281,8 +281,6 @@ namespace AICourseTester.Services
 				{
 					g.UserId,
 					g.TaskTypeId,
-					g.AlphaBetaId,
-					g.FifteenPuzzleId,
 					g.KnowledgeAspectId
 				})
 				.Select(group => group
@@ -291,6 +289,7 @@ namespace AICourseTester.Services
 					.ThenByDescending(g => g.AnalysisRunId ?? 0)
 					.ThenByDescending(g => g.Id)
 					.First())
+				.Where(gap => gap.GapScore > 0)
 				.ToList();
 		}
 
@@ -408,12 +407,12 @@ namespace AICourseTester.Services
 
 		private static string GetPriority(double gapScore)
 		{
-			if (gapScore >= 80)
+			if (gapScore >= 70)
 			{
 				return "High";
 			}
 
-			if (gapScore >= 50)
+			if (gapScore >= 40)
 			{
 				return "Medium";
 			}

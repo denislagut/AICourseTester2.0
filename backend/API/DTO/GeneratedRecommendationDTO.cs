@@ -7,6 +7,7 @@ namespace AICourseTester.DTO
 		public string? UserId { get; set; }
 		public int? GroupId { get; set; }
 		public int? KnowledgeAspectId { get; set; }
+		public string? AspectName { get; set; }
 		public string Title { get; set; } = null!;
 		public string Description { get; set; } = null!;
 		public string Priority { get; set; } = null!;

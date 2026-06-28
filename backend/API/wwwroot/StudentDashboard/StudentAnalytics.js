@@ -105,10 +105,7 @@ function renderAnalytics(analytics) {
         ${renderMetricCard('Серьёзные ошибки', highSeverityErrors)}
     `;
 
-    const hasAnyData = totalErrors > 0 || totalGaps > 0 || gaps.length > 0;
-    document.getElementById('student-gaps-content').innerHTML = hasAnyData
-        ? renderKnowledgeGaps(gaps, progress)
-        : renderEmptyState();
+    document.getElementById('student-gaps-content').innerHTML = renderKnowledgeGaps(gaps, progress);
 
     document.getElementById('student-progress-content').innerHTML = renderLearningProgress(progress);
 }
@@ -124,7 +121,7 @@ function renderMetricCard(label, value) {
 
 function renderKnowledgeGaps(gaps, progress) {
     if (!Array.isArray(gaps) || gaps.length === 0) {
-        return '<p class="empty-state">Пробелы в знаниях пока не найдены.</p>';
+        return '<p class="empty-state">По результатам выполненных заданий пробелы в знаниях не выявлены.</p>';
     }
 
     const progressByAspect = buildProgressByAspect(progress);
@@ -287,8 +284,8 @@ function formatSignedValue(value) {
 function getLevelByScore(score) {
     const numericScore = Number(score) || 0;
 
-    if (numericScore >= 80) return 'High';
-    if (numericScore >= 50) return 'Medium';
+    if (numericScore >= 70) return 'High';
+    if (numericScore >= 40) return 'Medium';
     return 'Low';
 }
 

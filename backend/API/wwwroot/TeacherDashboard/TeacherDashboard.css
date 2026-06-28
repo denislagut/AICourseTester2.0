@@ -160,6 +160,82 @@
     overflow-wrap: anywhere;
 }
 
+.group-summary-panel {
+    min-height: 0;
+}
+
+.group-summary {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.7fr) minmax(0, 3fr);
+    gap: 12px;
+}
+
+.group-summary__identity {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid #E4E4E4;
+    border-radius: 8px;
+    background: #F7F7F7;
+}
+
+.group-summary__identity span,
+.group-summary__identity small,
+.group-summary__metric span {
+    color: #555555;
+}
+
+.group-summary__identity span {
+    font-size: 13px;
+}
+
+.group-summary__identity strong {
+    margin: 3px 0;
+    font-size: 21px;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+}
+
+.group-summary__identity small {
+    font-size: 12px;
+}
+
+.group-summary__metrics {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid #E4E4E4;
+    border-radius: 8px;
+    background: #FFFFFF;
+}
+
+.group-summary__metric {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    min-height: 76px;
+    padding: 11px 12px;
+    border-left: 1px solid #E8E8E8;
+}
+
+.group-summary__metric:first-child {
+    border-left: 0;
+}
+
+.group-summary__metric span {
+    font-size: 13px;
+    line-height: 1.2;
+}
+
+.group-summary__metric strong {
+    margin-top: 5px;
+    font-size: 22px;
+    line-height: 1;
+}
+
 .filters-panel {
     border: 1px solid #DEDEDE;
     border-radius: 10px;
@@ -280,12 +356,12 @@
 
 .student-stat-list {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 12px;
 }
 
 .student-stat-card {
-    padding: 12px;
+    padding: 16px;
 }
 
 .student-stat-card__header {
@@ -309,7 +385,7 @@
 
 .student-stat-card__metrics {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 8px;
 }
 
@@ -370,6 +446,13 @@
     margin-bottom: 4px;
 }
 
+.learning-progress-panel .gap-row__student {
+    margin-bottom: 4px;
+    color: #444444;
+    font-size: 13px;
+    font-weight: 600;
+}
+
 .learning-progress-panel .gap-row__meta {
     font-size: 14px;
 }
@@ -385,26 +468,63 @@
 }
 
 .student-stat-details {
-    margin-top: 10px;
+    margin-top: 12px;
+    border-top: 1px solid #E8E8E8;
+    padding-top: 10px;
 }
 
 .student-stat-details summary {
     cursor: pointer;
     color: #1D4ED8;
     font-weight: 600;
+    font-size: 15px;
+    width: fit-content;
+    list-style: none;
+    user-select: none;
+}
+
+.student-stat-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.student-stat-details summary::before {
+    content: "▶";
+    display: inline-block;
+    margin-right: 7px;
+    font-size: 12px;
+    transition: transform 0.15s ease;
+}
+
+.student-stat-details[open] summary::before {
+    transform: rotate(90deg);
 }
 
 .student-stat-details__content {
     display: grid;
+    grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.1fr);
+    align-items: start;
+    gap: 18px;
+    margin-top: 14px;
+}
+
+.student-stat-details__content section,
+.student-stat-details__insights {
+    min-width: 0;
+}
+
+.student-stat-details__insights {
+    display: grid;
+    gap: 16px;
+}
+
+.student-stat-details__progress .student-stat-card__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 10px;
 }
 
 .student-stat-details__content h5 {
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
-    margin-bottom: 6px;
+    margin: 0 0 8px;
 }
 
 .student-stat-mini-list {
@@ -414,7 +534,7 @@
 
 .student-stat-mini-list div {
     border-bottom: 1px solid #E8E8E8;
-    padding-bottom: 7px;
+    padding: 0 0 8px;
 }
 
 .student-stat-mini-list strong,
@@ -422,10 +542,17 @@
     display: block;
 }
 
+.student-stat-mini-list strong {
+    font-size: 15px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
 .student-stat-mini-list span {
     color: #555555;
     font-size: 13px;
     line-height: 1.35;
+    margin-top: 3px;
 }
 
 .recommendation-item__description {
@@ -1063,6 +1190,26 @@
 @media (max-width: 720px) {
     .main-wrapper {
         width: 96vw;
+    }
+
+    .group-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .group-summary__metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .group-summary__metric {
+        border-top: 1px solid #E8E8E8;
+    }
+
+    .group-summary__metric:nth-child(odd) {
+        border-left: 0;
+    }
+
+    .group-summary__metric:nth-child(-n + 2) {
+        border-top: 0;
     }
 
     .section-heading,

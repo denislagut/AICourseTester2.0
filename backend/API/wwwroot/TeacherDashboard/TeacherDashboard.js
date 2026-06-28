@@ -1756,18 +1756,38 @@ function renderGroupAnalytics(analytics, recommendations) {
 
     content.innerHTML = `
         ${renderAnalyticsFilterNotice()}
-        ${renderPanel('Статистика группы', renderDetails([
-            ['Идентификатор группы', analytics.groupId],
-            ['Название группы', analytics.groupName],
-            ['Количество студентов', analytics.studentsCount],
-            ['Количество ошибок', analytics.totalErrors],
-            ['Количество пробелов', analytics.totalKnowledgeGaps],
-            ['Средний показатель пробела', analytics.averageGapScore],
-            ['Серьёзные ошибки', analytics.highSeverityErrorsCount]
-        ]))}
+        ${renderPanel('Статистика группы', renderGroupSummary(analytics), 'panel--wide group-summary-panel')}
         ${renderPanel('Статистика студентов группы', renderGroupStudentsStatistics(studentsStatistics), 'panel--wide')}
         ${renderPanel('Рекомендации группы', renderRecommendations(recommendations), 'panel--wide group-recommendations-panel')}
         ${renderPanel('Динамика обучения группы', renderLearningProgress(groupProgress), 'panel--wide learning-progress-panel')}
+    `;
+}
+
+function renderGroupSummary(analytics) {
+    return `
+        <div class="group-summary">
+            <div class="group-summary__identity">
+                <span>Группа</span>
+                <strong>${escapeHtml(analytics.groupName || 'Без названия')}</strong>
+                <small>ID группы: ${escapeHtml(formatValue(analytics.groupId))}</small>
+            </div>
+            <div class="group-summary__metrics">
+                ${renderGroupSummaryMetric('Студенты', analytics.studentsCount)}
+                ${renderGroupSummaryMetric('Ошибки', analytics.totalErrors)}
+                ${renderGroupSummaryMetric('Пробелы знаний', analytics.totalKnowledgeGaps)}
+                ${renderGroupSummaryMetric('Средний показатель', analytics.averageGapScore)}
+                ${renderGroupSummaryMetric('Серьёзные ошибки', analytics.highSeverityErrorsCount)}
+            </div>
+        </div>
+    `;
+}
+
+function renderGroupSummaryMetric(label, value) {
+    return `
+        <div class="group-summary__metric">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(formatValue(value))}</strong>
+        </div>
     `;
 }
 
@@ -1897,10 +1917,12 @@ function renderLearningProgressGaps(gapsProgress) {
                 const delta = item.gapScoreDelta ?? item.GapScoreDelta;
                 const trend = item.trend || item.Trend;
                 const level = item.level || item.Level;
+				const studentName = item.studentName || item.StudentName;
 
                 return `
                     <article class="gap-row">
                         <div class="gap-row__title">${escapeHtml(item.aspectName || item.AspectName || `Аспект #${item.knowledgeAspectId || item.KnowledgeAspectId}`)}</div>
+						${studentName ? `<div class="gap-row__student">Студент: ${escapeHtml(studentName)}</div>` : ''}
                         <div class="gap-row__meta">
                             Тема: ${escapeHtml(item.topic || item.Topic || 'не указана')}<br>
                             Предыдущий показатель: ${formatValue(previous)} |
@@ -1925,7 +1947,6 @@ function renderGroupStudentsStatistics(students) {
         <div class="student-stat-list">
             ${students.map(student => {
                 const gaps = student.topKnowledgeGaps || student.TopKnowledgeGaps || [];
-                const errors = student.topErrorTypes || student.TopErrorTypes || [];
                 const learningProgress = student.learningProgress || student.LearningProgress || null;
 
                 return `
@@ -1946,18 +1967,16 @@ function renderGroupStudentsStatistics(students) {
                         <details class="student-stat-details">
                             <summary>Подробнее</summary>
                             <div class="student-stat-details__content">
-                                <section>
+                                <section class="student-stat-details__progress">
                                     <h5>Динамика обучения</h5>
                                     ${renderLearningProgress(learningProgress, true)}
                                 </section>
-                                <section>
-                                    <h5>Проблемные темы</h5>
-                                    ${renderStudentTopKnowledgeGaps(gaps)}
-                                </section>
-                                <section>
-                                    <h5>Типы ошибок</h5>
-                                    ${renderStudentTopErrorTypes(errors)}
-                                </section>
+                                <div class="student-stat-details__insights">
+                                    <section>
+                                        <h5>Проблемные темы</h5>
+                                        ${renderStudentTopKnowledgeGaps(gaps, learningProgress)}
+                                    </section>
+                                </div>
                             </div>
                         </details>
                     </article>
@@ -1980,44 +1999,54 @@ function getStudentStatisticsName(student) {
     return student.fullName || student.FullName || student.userName || student.UserName || student.userId || student.UserId || 'Студент';
 }
 
-function renderStudentTopKnowledgeGaps(gaps) {
+function renderStudentTopKnowledgeGaps(gaps, learningProgress) {
     if (!Array.isArray(gaps) || gaps.length === 0) {
         return '<p class="empty-state">Проблемные темы не найдены.</p>';
     }
 
+    const currentScores = buildCurrentGapScoresByAspect(learningProgress);
+
     return `
         <div class="student-stat-mini-list">
-            ${gaps.map(gap => `
+            ${gaps.map(gap => {
+                const aspectId = Number(gap.knowledgeAspectId ?? gap.KnowledgeAspectId);
+                const currentScore = currentScores.get(aspectId) ?? gap.averageGapScore ?? gap.AverageGapScore;
+
+                return `
                 <div>
                     <strong>${escapeHtml(gap.aspectName || gap.AspectName || `Аспект #${gap.knowledgeAspectId || gap.KnowledgeAspectId}`)}</strong>
                     <span>
                         Тема: ${escapeHtml(gap.topicName || gap.TopicName || 'не указана')} |
-                        Средний показатель: ${formatValue(gap.averageGapScore ?? gap.AverageGapScore)}
+                        Текущий показатель: ${formatValue(currentScore)}
                     </span>
                 </div>
-            `).join('')}
+                `;
+            }).join('')}
         </div>
     `;
 }
 
-function renderStudentTopErrorTypes(errors) {
-    if (!Array.isArray(errors) || errors.length === 0) {
-        return '<p class="empty-state">Типы ошибок не найдены.</p>';
-    }
+function buildCurrentGapScoresByAspect(learningProgress) {
+    const progressItems = learningProgress?.gapsProgress || learningProgress?.GapsProgress || [];
+    const scoresByAspect = new Map();
 
-    return `
-        <div class="student-stat-mini-list">
-            ${errors.map(error => `
-                <div>
-                    <strong>${escapeHtml(error.name || error.Name || error.code || error.Code || `Ошибка #${error.errorTypeId || error.ErrorTypeId}`)}</strong>
-                    <span>
-                        Количество: ${formatValue(error.count ?? error.Count)} |
-                        Средняя серьёзность: ${formatValue(error.averageSeverity ?? error.AverageSeverity)}
-                    </span>
-                </div>
-            `).join('')}
-        </div>
-    `;
+    progressItems.forEach(item => {
+        const aspectId = Number(item.knowledgeAspectId ?? item.KnowledgeAspectId);
+        const currentScore = Number(item.currentGapScore ?? item.CurrentGapScore);
+
+        if (!Number.isInteger(aspectId) || aspectId <= 0 || !Number.isFinite(currentScore)) {
+            return;
+        }
+
+        const scores = scoresByAspect.get(aspectId) || [];
+        scores.push(currentScore);
+        scoresByAspect.set(aspectId, scores);
+    });
+
+    return new Map(Array.from(scoresByAspect, ([aspectId, scores]) => [
+        aspectId,
+        scores.reduce((sum, score) => sum + score, 0) / scores.length
+    ]));
 }
 
 function renderGapScoreIndicator(score) {
@@ -2053,17 +2082,24 @@ function renderRiskIndicator(level) {
     `;
 }
 
-function renderKnowledgeGapChart(gaps) {
+function renderKnowledgeGapChart(gaps, learningProgress = null) {
     if (!Array.isArray(gaps) || gaps.length === 0) {
         return '<p class="empty-state">Нет данных для диаграммы проблемных тем.</p>';
     }
 
-    const items = gaps.map(gap => ({
-        label: gap.AspectName || gap.aspectName || `Аспект #${gap.KnowledgeAspectId || gap.knowledgeAspectId}`,
-        meta: gap.TopicName || gap.topicName || 'тема не указана',
-        value: Number(gap.AverageGapScore ?? gap.averageGapScore ?? gap.MaxGapScore ?? gap.maxGapScore ?? 0),
-        valueLabel: `${formatValue(gap.AverageGapScore ?? gap.averageGapScore)}%`
-    }));
+    const currentScores = buildCurrentGapScoresByAspect(learningProgress);
+    const items = gaps.map(gap => {
+        const aspectId = Number(gap.KnowledgeAspectId ?? gap.knowledgeAspectId);
+        const score = currentScores.get(aspectId) ??
+            Number(gap.AverageGapScore ?? gap.averageGapScore ?? gap.MaxGapScore ?? gap.maxGapScore ?? 0);
+
+        return {
+            label: gap.AspectName || gap.aspectName || `Аспект #${gap.KnowledgeAspectId || gap.knowledgeAspectId}`,
+            meta: gap.TopicName || gap.topicName || 'тема не указана',
+            value: score,
+            valueLabel: `${formatValue(score)}%`
+        };
+    });
 
     return renderBarChart(items, 'Пробел');
 }
@@ -2079,7 +2115,7 @@ function renderErrorTypeChart(errorTypes) {
 
         return {
             label: errorType.Name || errorType.name || errorType.Code || errorType.code || `Ошибка #${errorType.ErrorTypeId || errorType.errorTypeId}`,
-            meta: `Средняя severity: ${formatValue(errorType.AverageSeverity ?? errorType.averageSeverity)}`,
+            meta: `Средняя серьёзность: ${formatValue(errorType.AverageSeverity ?? errorType.averageSeverity)}`,
             value: (count / maxCount) * 100,
             valueLabel: `${formatValue(count)}`
         };
@@ -2161,7 +2197,7 @@ function renderReports(reports) {
                             <button class="report-download-button" type="button" data-report-id="${escapeHtml(report.id)}" data-export-format="Excel">Скачать Excel</button>
                         </div>
                         <div id="${escapeHtml(detailsId)}" class="report-card__details">
-                            ${renderPedagogicalSummary(summary)}
+                            ${renderPedagogicalSummary(summary, recommendations)}
                             ${renderReportFilters(summary)}
                             ${renderReportAnalytics(analytics)}
                             ${renderReportRecommendations(recommendations)}
@@ -2191,7 +2227,7 @@ function renderReportSummary(report, summary) {
     `;
 }
 
-function renderPedagogicalSummary(summary) {
+function renderPedagogicalSummary(summary, recommendations = []) {
     if (!summary) {
         return '';
     }
@@ -2208,7 +2244,7 @@ function renderPedagogicalSummary(summary) {
         </div>
         <div class="report-block">
             <h4>Рекомендуемые действия преподавателя</h4>
-            ${renderTeacherActions(summary.teacherActions || [])}
+            ${renderTeacherActions(summary.teacherActions || [], recommendations)}
         </div>
     `;
 }
@@ -2267,16 +2303,51 @@ function renderMainProblems(problems) {
     `;
 }
 
-function renderTeacherActions(actions) {
+function renderTeacherActions(actions, recommendations = []) {
     if (!Array.isArray(actions) || actions.length === 0) {
         return '<p class="empty-state">Дополнительные действия не требуются.</p>';
     }
 
+    const aspectNames = new Map();
+    recommendations.forEach(recommendation => {
+        const aspectId = recommendation.knowledgeAspectId ?? recommendation.KnowledgeAspectId;
+        const aspectName = getRecommendationAspectName(recommendation);
+
+        if (aspectId && aspectName) {
+            aspectNames.set(String(aspectId), aspectName);
+        }
+    });
+
+    let latestAspectName = '';
+    const normalizedActions = actions.map(action => {
+        const titleAspectName = extractAspectNameFromTitle(action);
+        if (titleAspectName) {
+            latestAspectName = titleAspectName;
+        }
+
+        return String(action).replace(/по аспекту:\s*#(\d+)/gi, (match, aspectId) => {
+            const aspectName = aspectNames.get(String(aspectId)) || latestAspectName;
+            return aspectName
+                ? `по аспекту: ${aspectName}`
+                : 'по аспекту, указанному в рекомендации';
+        });
+    });
+
     return `
         <ul class="teacher-actions-list">
-            ${actions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}
+            ${normalizedActions.map(action => `<li>${escapeHtml(action)}</li>`).join('')}
         </ul>
     `;
+}
+
+function getRecommendationAspectName(recommendation) {
+    return recommendation.aspectName || recommendation.AspectName ||
+        extractAspectNameFromTitle(recommendation.title || recommendation.Title);
+}
+
+function extractAspectNameFromTitle(title) {
+    const match = String(title || '').match(/^Повторить тему:\s*(.+?)[.]?$/i);
+    return match ? match[1].trim() : '';
 }
 
 function renderReportAnalytics(analytics) {
@@ -2310,7 +2381,7 @@ function renderReportAnalytics(analytics) {
         ${renderReportGroupStudentsStatistics(studentsStatistics)}
         <div class="report-block">
             <h4>Проблемные темы</h4>
-            ${renderKnowledgeGapChart(topGaps)}
+            ${renderKnowledgeGapChart(topGaps, learningProgress)}
         </div>
         <div class="report-block">
             <h4>Основные типы ошибок</h4>
@@ -2447,7 +2518,7 @@ function renderReportErrorTypes(errorTypes) {
                     <div class="gap-row__title">${escapeHtml(errorType.Name || errorType.name || errorType.Code || errorType.code || `Ошибка #${errorType.ErrorTypeId || errorType.errorTypeId}`)}</div>
                     <div class="gap-row__meta">
                         Количество: ${formatValue(errorType.Count ?? errorType.count)}<br>
-                        Средняя severity: ${formatValue(errorType.AverageSeverity ?? errorType.averageSeverity)}
+                        Средняя серьёзность: ${formatValue(errorType.AverageSeverity ?? errorType.averageSeverity)}
                     </div>
                 </article>
             `).join('')}
@@ -2622,8 +2693,8 @@ function priorityClass(priority) {
 function scoreLevelClass(value) {
     const score = Number(value) || 0;
 
-    if (score >= 75) return 'score--high';
-    if (score >= 50) return 'score--medium';
+    if (score >= 70) return 'score--high';
+    if (score >= 40) return 'score--medium';
     return 'score--low';
 }
 

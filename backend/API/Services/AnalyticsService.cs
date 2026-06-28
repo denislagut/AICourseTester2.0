@@ -187,15 +187,17 @@ namespace AICourseTester.Services
 
 			var errors = await LoadErrorsForUsersAsync(new[] { userId });
 			var gapHistory = await LoadKnowledgeGapHistoryForUsersAsync(new[] { userId });
-			var gaps = SelectLatestKnowledgeGaps(gapHistory);
-			(errors, gaps) = await ApplyAnalyticsFiltersAsync(errors, gaps, filters);
-			FillLearningProgressFromHistory(gaps, gapHistory);
+			var progressGaps = SelectLatestKnowledgeGaps(gapHistory);
+			(errors, progressGaps) = await ApplyAnalyticsFiltersAsync(errors, progressGaps, filters);
+			FillLearningProgressFromHistory(progressGaps, gapHistory);
 			await FillLearningProgressFromPreviousSnapshotAsync(
-				gaps,
+				progressGaps,
 				scopeType: "Student",
 				userId: userId,
 				groupId: null,
 				userIds: new[] { userId });
+			var activeGaps = SelectActiveKnowledgeGaps(progressGaps);
+			var gapOccurrences = SelectKnowledgeGapOccurrences(gapHistory, activeGaps);
 
 			var analytics = new StudentAnalyticsDTO
 			{
@@ -205,12 +207,12 @@ namespace AICourseTester.Services
 				GroupId = group?.GroupId,
 				GroupName = group?.GroupName,
 				TotalErrors = errors.Count,
-				TotalKnowledgeGaps = gaps.Count,
-				AverageGapScore = CalculateAverageGapScore(gaps),
+				TotalKnowledgeGaps = activeGaps.Count,
+				AverageGapScore = CalculateAverageGapScore(activeGaps),
 				HighSeverityErrorsCount = errors.Count(e => e.SeverityScore >= HighSeverityThreshold),
 				TopErrorTypes = BuildTopErrorTypes(errors),
-				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps),
-				StudentProgress = BuildLearningProgress(gaps)
+				TopKnowledgeGaps = BuildTopKnowledgeGaps(gapOccurrences),
+				StudentProgress = BuildLearningProgress(progressGaps)
 			};
 
 			if (!HasActiveFilters(filters))
@@ -260,15 +262,28 @@ namespace AICourseTester.Services
 			var gapHistory = userIds.Count == 0
 				? new List<Models.KnowledgeGap>()
 				: await LoadKnowledgeGapHistoryForUsersAsync(userIds);
-			var gaps = SelectLatestKnowledgeGaps(gapHistory);
-			(errors, gaps) = await ApplyAnalyticsFiltersAsync(errors, gaps, filters);
-			FillLearningProgressFromHistory(gaps, gapHistory);
+			var progressGaps = SelectLatestKnowledgeGaps(gapHistory);
+			(errors, progressGaps) = await ApplyAnalyticsFiltersAsync(errors, progressGaps, filters);
+			FillLearningProgressFromHistory(progressGaps, gapHistory);
 			await FillLearningProgressFromPreviousSnapshotAsync(
-				gaps,
+				progressGaps,
 				scopeType: "Group",
 				userId: null,
 				groupId: groupId,
 				userIds: userIds);
+			var activeGaps = SelectActiveKnowledgeGaps(progressGaps);
+			var gapOccurrences = SelectKnowledgeGapOccurrences(gapHistory, activeGaps);
+			var studentsStatistics = groupStudents
+				.Select(student => BuildStudentGroupStatistics(
+					student.UserId,
+					student.UserName,
+					BuildFullName(student.SecondName, student.Name, student.Patronymic),
+					errors,
+					activeGaps,
+					progressGaps,
+					gapOccurrences))
+				.OrderBy(student => student.FullName ?? student.UserName ?? student.UserId)
+				.ToList();
 
 			var analytics = new GroupAnalyticsDTO
 			{
@@ -276,21 +291,13 @@ namespace AICourseTester.Services
 				GroupName = group.Name,
 				StudentsCount = userIds.Count,
 				TotalErrors = errors.Count,
-				TotalKnowledgeGaps = gaps.Count,
-				AverageGapScore = CalculateAverageGapScore(gaps),
+				TotalKnowledgeGaps = activeGaps.Count,
+				AverageGapScore = CalculateGroupAverageGapScore(studentsStatistics),
 				HighSeverityErrorsCount = errors.Count(e => e.SeverityScore >= HighSeverityThreshold),
 				TopErrorTypes = BuildTopErrorTypes(errors),
-				TopKnowledgeGaps = BuildTopKnowledgeGaps(gaps),
-				GroupProgress = BuildLearningProgress(gaps),
-				StudentsStatistics = groupStudents
-					.Select(student => BuildStudentGroupStatistics(
-						student.UserId,
-						student.UserName,
-						BuildFullName(student.SecondName, student.Name, student.Patronymic),
-						errors,
-						gaps))
-					.OrderBy(student => student.FullName ?? student.UserName ?? student.UserId)
-					.ToList()
+				TopKnowledgeGaps = BuildTopKnowledgeGaps(gapOccurrences),
+				GroupProgress = BuildGroupLearningProgress(studentsStatistics),
+				StudentsStatistics = studentsStatistics
 			};
 
 			if (!HasActiveFilters(filters))
@@ -859,7 +866,35 @@ namespace AICourseTester.Services
 
 		private async Task<List<Models.ErrorRecord>> LoadErrorsForUsersAsync(IReadOnlyCollection<string> userIds)
 		{
-			return await _context.ErrorRecords
+			var completedRuns = await _context.AnalysisRuns
+				.AsNoTracking()
+				.Where(run =>
+					userIds.Contains(run.UserId) &&
+					run.CompletedAt.HasValue)
+				.Select(run => new
+				{
+					run.Id,
+					run.UserId,
+					run.TaskTypeId,
+					run.CompletedAt
+				})
+				.ToListAsync();
+
+			var latestRuns = completedRuns
+				.GroupBy(run => new { run.UserId, run.TaskTypeId })
+				.Select(group => group
+					.OrderByDescending(run => run.CompletedAt)
+					.ThenByDescending(run => run.Id)
+					.First())
+				.ToList();
+			var latestRunIds = latestRuns
+				.Select(run => run.Id)
+				.ToHashSet();
+			var latestRunKeys = latestRuns
+				.Select(run => (run.UserId, run.TaskTypeId))
+				.ToHashSet();
+
+			var errors = await _context.ErrorRecords
 				.AsNoTracking()
 				.Include(e => e.AnalysisRun)
 				.Include(e => e.ErrorType)
@@ -871,6 +906,24 @@ namespace AICourseTester.Services
 					(e.FifteenPuzzle != null && userIds.Contains(e.FifteenPuzzle.UserId)))
 				.Where(e => e.IsPrimary && e.IsSummary != true)
 				.ToListAsync();
+
+			return errors
+				.Where(error =>
+					error.AnalysisRunId.HasValue
+						? latestRunIds.Contains(error.AnalysisRunId.Value)
+						: !TryGetErrorUserId(error, out var errorUserId) ||
+						  !latestRunKeys.Contains((errorUserId, error.TaskTypeId)))
+				.ToList();
+		}
+
+		private static bool TryGetErrorUserId(Models.ErrorRecord error, out string userId)
+		{
+			userId = error.AnalysisRun?.UserId ??
+				error.AlphaBeta?.UserId ??
+				error.FifteenPuzzle?.UserId ??
+				string.Empty;
+
+			return !string.IsNullOrWhiteSpace(userId);
 		}
 
 		private async Task<(List<Models.ErrorRecord> Errors, List<Models.KnowledgeGap> Gaps)> ApplyAnalyticsFiltersAsync(
@@ -976,7 +1029,7 @@ namespace AICourseTester.Services
 				.Include(g => g.FifteenPuzzle)
 				.ToListAsync();
 
-			return SelectLatestKnowledgeGaps(gaps);
+			return SelectActiveKnowledgeGaps(SelectLatestKnowledgeGaps(gaps));
 		}
 
 		private async Task<List<Models.KnowledgeGap>> LoadKnowledgeGapHistoryForUsersAsync(IReadOnlyCollection<string> userIds)
@@ -998,8 +1051,6 @@ namespace AICourseTester.Services
 				{
 					g.UserId,
 					g.TaskTypeId,
-					g.AlphaBetaId,
-					g.FifteenPuzzleId,
 					g.KnowledgeAspectId
 				})
 				.Select(group => group
@@ -1007,6 +1058,42 @@ namespace AICourseTester.Services
 					.ThenByDescending(g => g.CreatedAt)
 					.ThenByDescending(g => g.AnalysisRunId ?? 0)
 					.ThenByDescending(g => g.Id)
+					.First())
+				.ToList();
+		}
+
+		private static List<Models.KnowledgeGap> SelectActiveKnowledgeGaps(
+			IEnumerable<Models.KnowledgeGap> gaps)
+		{
+			return gaps
+				.Where(gap => gap.GapScore > 0)
+				.ToList();
+		}
+
+		private static List<Models.KnowledgeGap> SelectKnowledgeGapOccurrences(
+			IEnumerable<Models.KnowledgeGap> gapHistory,
+			IReadOnlyCollection<Models.KnowledgeGap> activeGaps)
+		{
+			var activeGapKeys = activeGaps
+				.Select(gap => (gap.UserId, gap.TaskTypeId, gap.KnowledgeAspectId))
+				.ToHashSet();
+
+			return gapHistory
+				.Where(gap =>
+					gap.GapScore > 0 &&
+					activeGapKeys.Contains((gap.UserId, gap.TaskTypeId, gap.KnowledgeAspectId)))
+				.GroupBy(gap => new
+				{
+					gap.UserId,
+					gap.TaskTypeId,
+					gap.KnowledgeAspectId,
+					gap.AnalysisRunId,
+					gap.AlphaBetaId,
+					gap.FifteenPuzzleId
+				})
+				.Select(group => group
+					.OrderByDescending(gap => gap.CreatedAt)
+					.ThenByDescending(gap => gap.Id)
 					.First())
 				.ToList();
 		}
@@ -1135,16 +1222,24 @@ namespace AICourseTester.Services
 			string? userName,
 			string? fullName,
 			IEnumerable<Models.ErrorRecord> groupErrors,
-			IEnumerable<Models.KnowledgeGap> groupGaps)
+			IEnumerable<Models.KnowledgeGap> groupActiveGaps,
+			IEnumerable<Models.KnowledgeGap> groupProgressGaps,
+			IEnumerable<Models.KnowledgeGap> groupGapOccurrences)
 		{
 			var studentErrors = groupErrors
 				.Where(error => ErrorBelongsToUser(error, userId))
 				.ToList();
-			var studentGaps = groupGaps
+			var studentGaps = groupActiveGaps
+				.Where(gap => gap.UserId == userId)
+				.ToList();
+			var studentProgressGaps = groupProgressGaps
+				.Where(gap => gap.UserId == userId)
+				.ToList();
+			var studentGapOccurrences = groupGapOccurrences
 				.Where(gap => gap.UserId == userId)
 				.ToList();
 
-			var learningProgress = BuildLearningProgress(studentGaps);
+			var learningProgress = BuildLearningProgress(studentProgressGaps);
 
 			return new StudentGroupStatisticsDTO
 			{
@@ -1156,13 +1251,89 @@ namespace AICourseTester.Services
 				AverageGapScore = CalculateAverageGapScore(studentGaps),
 				HighSeverityErrorsCount = studentErrors.Count(e => e.SeverityScore >= HighSeverityThreshold),
 				TopErrorTypes = BuildTopErrorTypes(studentErrors),
-				TopKnowledgeGaps = BuildTopKnowledgeGaps(studentGaps),
+				TopKnowledgeGaps = BuildTopKnowledgeGaps(studentGapOccurrences),
 				CurrentAverageGapScore = learningProgress.CurrentAverageGapScore,
 				PreviousAverageGapScore = learningProgress.PreviousAverageGapScore,
 				AverageGapScoreDelta = learningProgress.AverageGapScoreDelta,
 				TrendSummary = learningProgress.TrendSummary,
 				LearningProgress = learningProgress
 			};
+		}
+
+		private static double CalculateGroupAverageGapScore(
+			IReadOnlyCollection<StudentGroupStatisticsDTO> studentsStatistics)
+		{
+			return studentsStatistics.Count == 0
+				? 0
+				: Math.Round(studentsStatistics.Average(student => student.AverageGapScore), 2);
+		}
+
+		private static LearningProgressDTO BuildGroupLearningProgress(
+			IReadOnlyCollection<StudentGroupStatisticsDTO> studentsStatistics)
+		{
+			if (studentsStatistics.Count == 0)
+			{
+				return new LearningProgressDTO();
+			}
+
+			var studentProgress = studentsStatistics
+				.Select(student => student.LearningProgress)
+				.ToList();
+			var hasPreviousData = studentProgress
+				.Any(progress => progress.PreviousAverageGapScore.HasValue);
+			var currentAverage = studentsStatistics
+				.Average(student => student.AverageGapScore);
+			double? previousAverage = hasPreviousData
+				? studentProgress.Average(progress => progress.PreviousAverageGapScore ?? 0)
+				: null;
+			var averageDelta = previousAverage.HasValue
+				? currentAverage - previousAverage.Value
+				: 0;
+			var gapsProgress = BuildGroupGapProgress(studentsStatistics);
+
+			return new LearningProgressDTO
+			{
+				CurrentAverageGapScore = Math.Round(currentAverage, 2),
+				PreviousAverageGapScore = previousAverage.HasValue
+					? Math.Round(previousAverage.Value, 2)
+					: null,
+				AverageGapScoreDelta = Math.Round(averageDelta, 2),
+				ImprovedGapsCount = studentProgress.Sum(progress => progress.ImprovedGapsCount),
+				WorsenedGapsCount = studentProgress.Sum(progress => progress.WorsenedGapsCount),
+				StableGapsCount = studentProgress.Sum(progress => progress.StableGapsCount),
+				NewGapsCount = studentProgress.Sum(progress => progress.NewGapsCount),
+				TrendSummary = BuildTrendSummary(
+					averageDelta,
+					hasPreviousData,
+					gapsProgress.Count),
+				GapsProgress = gapsProgress
+			};
+		}
+
+		private static List<KnowledgeGapProgressDTO> BuildGroupGapProgress(
+			IEnumerable<StudentGroupStatisticsDTO> studentsStatistics)
+		{
+			return studentsStatistics
+				.SelectMany(student => student.LearningProgress.GapsProgress.Select(item =>
+					new KnowledgeGapProgressDTO
+					{
+						StudentUserId = student.UserId,
+						StudentName = string.IsNullOrWhiteSpace(student.FullName)
+							? student.UserName ?? student.UserId
+							: student.FullName,
+						KnowledgeAspectId = item.KnowledgeAspectId,
+						AspectName = item.AspectName,
+						Topic = item.Topic,
+						PreviousGapScore = item.PreviousGapScore,
+						CurrentGapScore = item.CurrentGapScore,
+						GapScoreDelta = item.GapScoreDelta,
+						Trend = item.Trend,
+						Level = item.Level
+					}))
+				.OrderByDescending(item => Math.Abs(item.GapScoreDelta))
+				.ThenBy(item => item.StudentName)
+				.ThenBy(item => item.AspectName)
+				.ToList();
 		}
 
 		private static bool ErrorBelongsToUser(Models.ErrorRecord error, string userId)
@@ -1259,21 +1430,24 @@ namespace AICourseTester.Services
 						CurrentGapScore = Math.Round(current, 2),
 						GapScoreDelta = Math.Round(delta, 2),
 						Trend = string.IsNullOrWhiteSpace(latest.Trend) ? BuildTrend(delta) : latest.Trend,
-						Level = string.IsNullOrWhiteSpace(latest.Level) ? "Low" : latest.Level
+						Level = GetKnowledgeGapLevel(current)
 					};
 				})
 				.OrderByDescending(item => Math.Abs(item.GapScoreDelta))
 				.ThenByDescending(item => item.CurrentGapScore)
 				.ToList();
 
-			var previousScores = gaps
-				.Where(gap => gap.PreviousGapScore.HasValue)
-				.Select(gap => gap.PreviousGapScore!.Value)
+			var comparableItems = progressItems
+				.Where(item => item.PreviousGapScore.HasValue)
 				.ToList();
-			var currentAverage = gaps.Count == 0 ? 0 : gaps.Average(gap => gap.GapScore);
-			double? previousAverage = previousScores.Count == 0
+			var currentAverage = comparableItems.Count > 0
+				? comparableItems.Average(item => item.CurrentGapScore)
+				: progressItems.Count == 0
+					? 0
+					: progressItems.Average(item => item.CurrentGapScore);
+			double? previousAverage = comparableItems.Count == 0
 				? null
-				: previousScores.Average();
+				: comparableItems.Average(item => item.PreviousGapScore!.Value);
 			var averageDelta = previousAverage.HasValue
 				? currentAverage - previousAverage.Value
 				: 0;
@@ -1283,33 +1457,33 @@ namespace AICourseTester.Services
 				CurrentAverageGapScore = Math.Round(currentAverage, 2),
 				PreviousAverageGapScore = previousAverage.HasValue ? Math.Round(previousAverage.Value, 2) : null,
 				AverageGapScoreDelta = Math.Round(averageDelta, 2),
-				ImprovedGapsCount = gaps.Count(IsImprovedGap),
-				WorsenedGapsCount = gaps.Count(IsWorsenedGap),
-				StableGapsCount = gaps.Count(IsStableGap),
-				NewGapsCount = gaps.Count(IsNewGap),
-				TrendSummary = BuildTrendSummary(averageDelta, previousAverage.HasValue, gaps.Count),
+				ImprovedGapsCount = progressItems.Count(IsImprovedGap),
+				WorsenedGapsCount = progressItems.Count(IsWorsenedGap),
+				StableGapsCount = progressItems.Count(IsStableGap),
+				NewGapsCount = progressItems.Count(IsNewGap),
+				TrendSummary = BuildTrendSummary(averageDelta, previousAverage.HasValue, progressItems.Count),
 				GapsProgress = progressItems
 			};
 		}
 
-		private static bool IsImprovedGap(Models.KnowledgeGap gap)
+		private static bool IsImprovedGap(KnowledgeGapProgressDTO gap)
 		{
-			return IsTrend(gap.Trend, "Improved") ||
-				(gap.GapScoreDelta.HasValue && gap.GapScoreDelta.Value < 0);
+			return gap.PreviousGapScore.HasValue &&
+				(IsTrend(gap.Trend, "Improved") || gap.GapScoreDelta < 0);
 		}
 
-		private static bool IsWorsenedGap(Models.KnowledgeGap gap)
+		private static bool IsWorsenedGap(KnowledgeGapProgressDTO gap)
 		{
-			return IsTrend(gap.Trend, "Worsened") ||
-				(gap.GapScoreDelta.HasValue && gap.GapScoreDelta.Value > 0);
+			return gap.PreviousGapScore.HasValue &&
+				(IsTrend(gap.Trend, "Worsened") || gap.GapScoreDelta > 0);
 		}
 
-		private static bool IsNewGap(Models.KnowledgeGap gap)
+		private static bool IsNewGap(KnowledgeGapProgressDTO gap)
 		{
 			return IsTrend(gap.Trend, "New") || !gap.PreviousGapScore.HasValue;
 		}
 
-		private static bool IsStableGap(Models.KnowledgeGap gap)
+		private static bool IsStableGap(KnowledgeGapProgressDTO gap)
 		{
 			return !IsImprovedGap(gap) && !IsWorsenedGap(gap) && !IsNewGap(gap);
 		}
@@ -1332,6 +1506,16 @@ namespace AICourseTester.Services
 			}
 
 			return "Stable";
+		}
+
+		private static string GetKnowledgeGapLevel(double gapScore)
+		{
+			if (gapScore >= 70)
+			{
+				return "High";
+			}
+
+			return gapScore >= 40 ? "Medium" : "Low";
 		}
 
 		private static string BuildTrendSummary(double averageDelta, bool hasPreviousData, int gapsCount)

@@ -2,6 +2,8 @@ namespace AICourseTester.DTO
 {
 	public class KnowledgeGapProgressDTO
 	{
+		public string? StudentUserId { get; set; }
+		public string? StudentName { get; set; }
 		public int KnowledgeAspectId { get; set; }
 		public string AspectName { get; set; } = null!;
 		public string? Topic { get; set; }

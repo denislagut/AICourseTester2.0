@@ -7,6 +7,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AICourseTester.Services
 {
@@ -715,6 +716,10 @@ namespace AICourseTester.Services
 			{
 				knowledgeGaps = mainProblems;
 			}
+			var recommendationItems = GetRecommendations(recommendations.RootElement);
+			var teacherActions = NormalizeTeacherActions(
+				GetStringArray(summaryRoot, "teacherActions", "TeacherActions"),
+				recommendationItems);
 
 			return new ReportExportData
 			{
@@ -724,7 +729,7 @@ namespace AICourseTester.Services
 				RiskLevel = GetString(summaryRoot, "riskLevel", "RiskLevel", "Low"),
 				Conclusion = GetString(summaryRoot, "conclusion", "Conclusion", ""),
 				RecommendationsCount = GetInt(summaryRoot, "recommendationsCount", "RecommendationsCount", 0),
-				TeacherActions = GetStringArray(summaryRoot, "teacherActions", "TeacherActions"),
+				TeacherActions = teacherActions,
 				Filters = GetReportFilters(summaryRoot),
 				LearningProgress = GetLearningProgress(analyticsRoot, "StudentProgress", "studentProgress", "GroupProgress", "groupProgress"),
 				KnowledgeGaps = knowledgeGaps,
@@ -734,8 +739,59 @@ namespace AICourseTester.Services
 				HighSeverityErrorsCount = GetInt(analyticsRoot, "HighSeverityErrorsCount", "highSeverityErrorsCount", 0),
 				ErrorTypes = GetErrorTypes(analyticsRoot),
 				StudentsStatistics = GetStudentsStatistics(analyticsRoot),
-				Recommendations = GetRecommendations(recommendations.RootElement)
+				Recommendations = recommendationItems
 			};
+		}
+
+		private static List<string> NormalizeTeacherActions(
+			IEnumerable<string> actions,
+			IReadOnlyCollection<RecommendationExportItem> recommendations)
+		{
+			var aspectNames = recommendations
+				.Where(item => item.KnowledgeAspectId > 0)
+				.GroupBy(item => item.KnowledgeAspectId)
+				.ToDictionary(
+					group => group.Key,
+					group => ResolveRecommendationAspectName(group.First()));
+			string? latestAspectName = null;
+
+			return actions.Select(action =>
+			{
+				var titleAspectName = ExtractAspectNameFromTitle(action);
+				if (!string.IsNullOrWhiteSpace(titleAspectName))
+				{
+					latestAspectName = titleAspectName;
+				}
+
+				return Regex.Replace(
+					action,
+					@"по аспекту:\s*#(?<id>\d+)",
+					match =>
+					{
+						var id = int.Parse(match.Groups["id"].Value);
+						var aspectName = aspectNames.GetValueOrDefault(id) ?? latestAspectName;
+						return string.IsNullOrWhiteSpace(aspectName)
+							? "по аспекту, указанному в рекомендации"
+							: $"по аспекту: {aspectName}";
+					},
+					RegexOptions.IgnoreCase);
+			}).ToList();
+		}
+
+		private static string ResolveRecommendationAspectName(RecommendationExportItem recommendation)
+		{
+			return !string.IsNullOrWhiteSpace(recommendation.AspectName)
+				? recommendation.AspectName
+				: ExtractAspectNameFromTitle(recommendation.Title) ?? string.Empty;
+		}
+
+		private static string? ExtractAspectNameFromTitle(string? title)
+		{
+			const string prefix = "Повторить тему:";
+
+			return !string.IsNullOrWhiteSpace(title) && title.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+				? title[prefix.Length..].Trim().TrimEnd('.')
+				: null;
 		}
 
 		private static JsonDocument ParseDocument(string json)
@@ -817,6 +873,8 @@ namespace AICourseTester.Services
 			return root.EnumerateArray()
 				.Select(item => new RecommendationExportItem
 				{
+					KnowledgeAspectId = GetInt(item, "KnowledgeAspectId", "knowledgeAspectId", 0),
+					AspectName = GetString(item, "AspectName", "aspectName", ""),
 					Priority = GetString(item, "Priority", "priority", "Low"),
 					Title = GetString(item, "Title", "title", "Рекомендация"),
 					Description = GetString(item, "Description", "description", ""),
@@ -1125,12 +1183,12 @@ namespace AICourseTester.Services
 
 		private static string GetLevel(double score)
 		{
-			if (score > 75)
+			if (score >= 70)
 			{
 				return "High";
 			}
 
-			if (score >= 50)
+			if (score >= 40)
 			{
 				return "Medium";
 			}
@@ -1317,6 +1375,8 @@ namespace AICourseTester.Services
 
 		private class RecommendationExportItem
 		{
+			public int KnowledgeAspectId { get; set; }
+			public string AspectName { get; set; } = "";
 			public string Priority { get; set; } = "";
 			public string Title { get; set; } = "";
 			public string Description { get; set; } = "";

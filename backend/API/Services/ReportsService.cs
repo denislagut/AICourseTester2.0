@@ -219,6 +219,7 @@ namespace AICourseTester.Services
 					UserId = r.UserId,
 					GroupId = r.GroupId,
 					KnowledgeAspectId = r.KnowledgeAspectId,
+					AspectName = r.KnowledgeAspect == null ? null : r.KnowledgeAspect.Name,
 					Title = r.Title,
 					Description = r.Description,
 					Priority = r.Priority,
@@ -499,12 +500,12 @@ namespace AICourseTester.Services
 
 		private static string GetProblemLevel(double score)
 		{
-			if (score >= 80)
+			if (score >= 70)
 			{
 				return "High";
 			}
 
-			if (score >= 50)
+			if (score >= 40)
 			{
 				return "Medium";
 			}
@@ -558,7 +559,9 @@ namespace AICourseTester.Services
 				.SelectMany(r =>
 				{
 					var topic = string.IsNullOrWhiteSpace(r.TopicName) ? "соответствующей теме" : $"теме \"{r.TopicName}\"";
-					var aspect = r.KnowledgeAspectId.HasValue ? $"#{r.KnowledgeAspectId}" : topic;
+					var aspect = !string.IsNullOrWhiteSpace(r.AspectName)
+						? r.AspectName
+						: ExtractAspectNameFromTitle(r.Title) ?? "указанному в рекомендации";
 
 					return new[]
 					{
@@ -570,6 +573,15 @@ namespace AICourseTester.Services
 				.Distinct()
 				.Take(12)
 				.ToList();
+		}
+
+		private static string? ExtractAspectNameFromTitle(string? title)
+		{
+			const string prefix = "Повторить тему:";
+
+			return !string.IsNullOrWhiteSpace(title) && title.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+				? title[prefix.Length..].Trim()
+				: null;
 		}
 
 		private static AnalyticsSnapshotDTO MapSnapshot(AnalyticsSnapshot snapshot)
